@@ -89,7 +89,7 @@ export default function ProposalsPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
-                                    {groupedProposals[campaignId].map((p) => (
+                                    {groupedProposals[campaignId].map((p: any) => (
                                         <tr key={p.id} className="hover:bg-blue-50 transition-colors">
                                             <td className="p-4 text-sm text-gray-500">
                                                 {new Date(p.createdAt).toLocaleDateString('pt-BR')} <br />
@@ -99,9 +99,9 @@ export default function ProposalsPage() {
                                             <td className="p-4 text-gray-600 font-mono text-sm">{p.cpf}</td>
                                             <td className="p-4">
                                                 <span className={`px-3 py-1 rounded-full text-xs font-bold ${p.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                                        p.status === 'pending_documents' ? 'bg-yellow-100 text-yellow-800' :
-                                                            p.status === 'documents_received' ? 'bg-blue-100 text-blue-800' :
-                                                                'bg-gray-100 text-gray-800'
+                                                    p.status === 'pending_documents' ? 'bg-yellow-100 text-yellow-800' :
+                                                        p.status === 'documents_received' ? 'bg-blue-100 text-blue-800' :
+                                                            'bg-gray-100 text-gray-800'
                                                     }`}>
                                                     {p.status === 'completed' ? 'Concluído' :
                                                         p.status === 'pending_documents' ? 'Aguardando Docs' :
