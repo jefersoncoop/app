@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm, FormProvider, useFormContext } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -101,6 +101,10 @@ interface SelectProps {
     options: string[];
 }
 
+const BRAZIL_STATES = [
+    'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
+].sort();
+
 const SelectField = ({ name, label, options }: SelectProps) => {
     const { register, formState: { errors } } = useFormContext();
     const error = errors[name]?.message as string | undefined;
@@ -111,6 +115,53 @@ const SelectField = ({ name, label, options }: SelectProps) => {
             <select {...register(name)} className={`w-full p-4 border-2 rounded-xl text-lg bg-white transition-all ${error ? 'border-red-500 bg-red-50' : 'border-gray-200 focus:border-[#CCFF00] focus:ring-2 focus:ring-[#CCFF00] focus:outline-none'}`}>
                 <option value="">Selecione...</option>
                 {options.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+            </select>
+            {error && <p className="text-red-500 text-sm font-semibold">{error}</p>}
+        </div>
+    );
+};
+
+const CitySelectField = ({ name, label, stateFieldName }: { name: string, label: string, stateFieldName: string }) => {
+    const { register, watch, setValue, formState: { errors } } = useFormContext();
+    const [cities, setCities] = useState<string[]>([]);
+    const [loading, setLoading] = useState(false);
+    const selectedState = watch(stateFieldName);
+    const error = errors[name]?.message as string | undefined;
+
+    useEffect(() => {
+        if (!selectedState) {
+            setCities([]);
+            return;
+        }
+
+        const fetchCities = async () => {
+            setLoading(true);
+            try {
+                const response = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${selectedState}/municipios?orderBy=nome`);
+                const data = await response.json();
+                setCities(data.map((c: any) => c.nome.toUpperCase()));
+            } catch (err) {
+                console.error("Error fetching cities:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchCities();
+    }, [selectedState]);
+
+    return (
+        <div className="w-full space-y-2">
+            <label className="text-lg font-bold text-[#002B49] block">{label}</label>
+            <select
+                {...register(name)}
+                disabled={!selectedState || loading}
+                className={`w-full p-4 border-2 rounded-xl text-lg bg-white transition-all ${error ? 'border-red-500 bg-red-50' : 'border-gray-200 focus:border-[#CCFF00] focus:ring-2 focus:ring-[#CCFF00] focus:outline-none disabled:bg-gray-100'}`}
+            >
+                <option value="">{loading ? 'Carregando cidades...' : 'Selecione a cidade...'}</option>
+                {cities.map((city) => (
+                    <option key={city} value={city}>{city}</option>
+                ))}
             </select>
             {error && <p className="text-red-500 text-sm font-semibold">{error}</p>}
         </div>
@@ -346,8 +397,8 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                         <SelectField name="estadoCivil" label="Estado Civil" options={['Solteiro(a)', 'Casado(a)', 'Divorciado(a)', 'Viúvo(a)', 'União Estável']} />
                                         <SelectField name="nacionalidade" label="Nacionalidade" options={['Brasileira', 'Estrangeira']} />
                                         <div className="grid grid-cols-2 gap-4">
-                                            <SelectField name="naturalidadeEstado" label="UF Nascimento" options={['SP', 'RJ', 'MG', 'RS', 'BA', 'PE', 'CE', 'PR', 'SC', 'GO', 'AM', 'PA', 'MT', 'MS', 'ES', 'PB', 'RN', 'AL', 'PI', 'MA', 'SE', 'TO', 'RO', 'AC', 'RR', 'AP', 'DF']} />
-                                            <InputField name="naturalidadeMunicipio" label="Cidade Nascimento" />
+                                            <SelectField name="naturalidadeEstado" label="UF Nascimento" options={BRAZIL_STATES} />
+                                            <CitySelectField name="naturalidadeMunicipio" label="Cidade Nascimento" stateFieldName="naturalidadeEstado" />
                                         </div>
                                     </div>
                                 )}
@@ -357,8 +408,9 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                     <div className="space-y-4">
                                         <InputField name="cep" label="CEP" placeholder="00000-000" mask="cep" />
                                         <div className="grid grid-cols-2 gap-4">
-                                            <InputField name="cidade" label="Cidade" />
-                                            <SelectField name="estado" label="UF" options={['SP', 'RJ', 'MG', 'RS', 'BA', 'PE', 'CE', 'PR', 'SC', 'GO', 'AM', 'PA', 'MT', 'MS', 'ES', 'PB', 'RN', 'AL', 'PI', 'MA', 'SE', 'TO', 'RO', 'AC', 'RR', 'AP', 'DF']} />
+                                            <SelectField name="estado" label="UF" options={BRAZIL_STATES} />
+                                            <CitySelectField name="cidade" label="Cidade" stateFieldName="estado" />
+
                                         </div>
                                         <SelectField name="logradouroTipo" label="Tipo" options={['Rua', 'Avenida', 'Estrada', 'Rodovia', 'Alameda', 'Travessa', 'Praça']} />
                                         <InputField name="logradouroNome" label="Logradouro" />
@@ -500,23 +552,25 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
 
                                 {/* TELA: LGPD (75%) */}
                                 {step === 13 && (
-                                    <div className="space-y-6 text-center">
+                                    <div className="space-y-6">
                                         <div className="flex justify-center"><ShieldCheck size={64} className="text-[#002B49]" /></div>
                                         <h2 className="text-2xl font-bold">Privacidade de Dados</h2>
-                                        <p className="text-gray-600 text-sm">Consinto que a COOPERATIVA DE TRABALHO DOS PROFISSIONAIS DA EDUCAÇÃO DO ESTADO DO RN (COOPEDU), aqui denominada como CONTROLADORA, inscrita no CNPJ sob n° 35.537.126-0001/84, em
-                                            razão do Proposta de Adesão, disponha dos meus dados pessoais e dados pessoais sensíveis, de acordo com os artigos 7° e 11° da Lei n° 13.709/2018, conforme disposto neste termo, significando que o Titular (cooperado)
-                                            autoriza a Controladora (Coopedu) a realizar o tratamento, ou seja, a utilizar os seguintes dados pessoais, para os fins que serão relacionados: nome, RG, CPF, sexualidade, nacionalidade, endereço, dados bancários, dados sensíveis (dado pessoal sobre origem racial ou étnica, convicção religiosa, opinião política, organização de caráter religioso, dado referente à saúde ou à vida sexual, dado genético ou biométrico), com a finalidade de Tratamento dos Dados, para: atualização cadastral, fomento do banco de dados de cooperados aptos a produzir, entrega de informações solicitadas pelo titular dos dados, e em caso de oportunidas angaridas pela cooperativa, Nº MATRÍCULA: como: planos de saúde e odontológico, parcerias educacionais e com instituições financeiras, vale alimentação, seguro de vida, plano de previdência privada, dentre outros, havendo a comunicação prévia para, querendo, o cooperado revogar o consentimento, a qualquer tempo, por e-mail ou por carta escrita, conforme o artigo 8°, § 5°, da Lei n° 13.709/2020. COMPARTILHAMENTO DE DADOS: A Controladora fica autorizada a compartilhar os dados pessoais do Titular
-                                            com outros agentes de tratamento de dados, caso seja necessário para as finalidades listadas neste instrumento, desde que, sejam respeitados os princípios da boa-fé, finalidade, adequação, necessidade, livre acesso, qualidade
-                                            dos dados, transparência, segurança, prevenção, não discriminação e responsabilização e prestação de contas. RESPONSABILIDADE PELA SEGURANÇA DOS DADOS: A Controladora se responsabiliza por manter medidas de segurança, técnicas e administrativas suficientes a proteger os dados pessoais do Titular e à Autoridade Nacional de Proteção de Dados (ANPD), comunicando ao Titular, caso ocorra algum incidente de segurança que
-                                            possa acarretar risco ou dano relevante conforme artigo 48 da Lei n° 13.709/2020. TÉRMINO DO TRATAMENTO DOS DADOS: À Controladora, é permitido manter e utilizar os dados pessoais do Titular durante todo o período estipulado e descrito na política de descarte de documentos inativos e firmado para as finalidades relacionadas neste termo e para cumprimento de obrigação legal ou impostas por órgãos de fiscalização, nos termos do artigo 16 da Lei n° 13.709/2018. O titular fica ciente de que a Controladora deverá
-                                            permanecer com os seus dados pelo período na política de descarte de documentos inativos. As partes poderão entrar em acordo, quanto aos eventuais danos causados, caso exista o vazamento de dados pessoais ou
-                                            acessos não autorizados, e caso não haja acordo, a Controladora tem ciência que estará sujeita às penalidades previstas no artigo 52 da Lei n° 13.709/2018.
-                                            ACORDO DE CONFIDENCIALIDADE: As partes têm entre si justo e acordado o presente (“Acordo”), que seregerá pelas seguinte cláusulas: 1. As partes em si, seus administradores, empregados e prepostos concordam esse comprometem. 2. A não divulgar as Informações Confidenciais, sem a prévia permissão por escrito da outra parte, exceto numa base confidencial, aos diretores, gerentes, representantes (inclusive contadores, advogados e
-                                            agentes) e empregados da parte receptora. 2.2. A não duplicar nem distribuir a qualquer outra pessoa além de seus Representantes nenhuma Informação Confidencial para nenhum propósito. 3. Não obstante qualquer outra
-                                            cláusula deste Acordo, as partes podem divulgar as Informações Confidenciais em caso de a) solicitação por ordem judicial, ou processo semelhante emitido por um tribunal da jurisdição competente ou por um órgão governamental; b) em qualquer declaração ou testemunho apresentado a qualquer órgão federal, estadual ou municipal, ou qualquer órgão regulamentador com jurisdição sobre esta parte; ou c) para atender às leis, ordens, regulamentos ou regras aplicáveis a esta parte. 4.Cada uma das partes declara-se ciente de que o manuseio
-                                            inadequado das Informações Confidenciais, sua divulgação ou revelação inadvertida ou desautorizada a quaisquer terceiros, representarão, por si só, prejuízo ao patrimônio da outra parte, podendo implicar a sua responsabilização civil e/ou criminal, de acordo com a violação verificada, obrigando-se ao ressarcimento das perdas e danos decorrentes. 5. Os termos deste Acordo obrigam as partes e seus sucessores. 6. Este Acordo terá
-                                            a validade de 05 (cinco) anos a contar da data de sua assinatura. 7. As PARTES declaram estar cientes das disposições previstas na Lei n. 13.709/2018 (Lei Geral de Proteção de Dados – “LGPD”) e que, desde o dia 16 de
-                                            agosto de 2020, estão aptas para cumpri-las no tratamento de todos e quaisquer dados pessoais realizado em razão do presente Contrato, de forma a garantir inteiramente os plenos direitos dos titulares de dados sendo seu descumprimento fundamento para rescisão contratual, a critério da COOPERATIVA DE TRABALHO DOS PROFISSIONAIS DA EDUCAÇÃO DO ESTADO DO RN (COOPEDU).</p>
+                                        <div className="h-40 overflow-y-auto bg-gray-50 p-4 rounded-xl border border-gray-200 text-sm">
+                                            <p className="text-gray-600 text-sm">Consinto que a COOPERATIVA DE TRABALHO DOS PROFISSIONAIS DA EDUCAÇÃO DO ESTADO DO RN (COOPEDU), aqui denominada como CONTROLADORA, inscrita no CNPJ sob n° 35.537.126-0001/84, em
+                                                razão do Proposta de Adesão, disponha dos meus dados pessoais e dados pessoais sensíveis, de acordo com os artigos 7° e 11° da Lei n° 13.709/2018, conforme disposto neste termo, significando que o Titular (cooperado)
+                                                autoriza a Controladora (Coopedu) a realizar o tratamento, ou seja, a utilizar os seguintes dados pessoais, para os fins que serão relacionados: nome, RG, CPF, sexualidade, nacionalidade, endereço, dados bancários, dados sensíveis (dado pessoal sobre origem racial ou étnica, convicção religiosa, opinião política, organização de caráter religioso, dado referente à saúde ou à vida sexual, dado genético ou biométrico), com a finalidade de Tratamento dos Dados, para: atualização cadastral, fomento do banco de dados de cooperados aptos a produzir, entrega de informações solicitadas pelo titular dos dados, e em caso de oportunidas angaridas pela cooperativa, Nº MATRÍCULA: como: planos de saúde e odontológico, parcerias educacionais e com instituições financeiras, vale alimentação, seguro de vida, plano de previdência privada, dentre outros, havendo a comunicação prévia para, querendo, o cooperado revogar o consentimento, a qualquer tempo, por e-mail ou por carta escrita, conforme o artigo 8°, § 5°, da Lei n° 13.709/2020. COMPARTILHAMENTO DE DADOS: A Controladora fica autorizada a compartilhar os dados pessoais do Titular
+                                                com outros agentes de tratamento de dados, caso seja necessário para as finalidades listadas neste instrumento, desde que, sejam respeitados os princípios da boa-fé, finalidade, adequação, necessidade, livre acesso, qualidade
+                                                dos dados, transparência, segurança, prevenção, não discriminação e responsabilização e prestação de contas. RESPONSABILIDADE PELA SEGURANÇA DOS DADOS: A Controladora se responsabiliza por manter medidas de segurança, técnicas e administrativas suficientes a proteger os dados pessoais do Titular e à Autoridade Nacional de Proteção de Dados (ANPD), comunicando ao Titular, caso ocorra algum incidente de segurança que
+                                                possa acarretar risco ou dano relevante conforme artigo 48 da Lei n° 13.709/2020. TÉRMINO DO TRATAMENTO DOS DADOS: À Controladora, é permitido manter e utilizar os dados pessoais do Titular durante todo o período estipulado e descrito na política de descarte de documentos inativos e firmado para as finalidades relacionadas neste termo e para cumprimento de obrigação legal ou impostas por órgãos de fiscalização, nos termos do artigo 16 da Lei n° 13.709/2018. O titular fica ciente de que a Controladora deverá
+                                                permanecer com os seus dados pelo período na política de descarte de documentos inativos. As partes poderão entrar em acordo, quanto aos eventuais danos causados, caso exista o vazamento de dados pessoais ou
+                                                acessos não autorizados, e caso não haja acordo, a Controladora tem ciência que estará sujeita às penalidades previstas no artigo 52 da Lei n° 13.709/2018.
+                                                ACORDO DE CONFIDENCIALIDADE: As partes têm entre si justo e acordado o presente (“Acordo”), que seregerá pelas seguinte cláusulas: 1. As partes em si, seus administradores, empregados e prepostos concordam esse comprometem. 2. A não divulgar as Informações Confidenciais, sem a prévia permissão por escrito da outra parte, exceto numa base confidencial, aos diretores, gerentes, representantes (inclusive contadores, advogados e
+                                                agentes) e empregados da parte receptora. 2.2. A não duplicar nem distribuir a qualquer outra pessoa além de seus Representantes nenhuma Informação Confidencial para nenhum propósito. 3. Não obstante qualquer outra
+                                                cláusula deste Acordo, as partes podem divulgar as Informações Confidenciais em caso de a) solicitação por ordem judicial, ou processo semelhante emitido por um tribunal da jurisdição competente ou por um órgão governamental; b) em qualquer declaração ou testemunho apresentado a qualquer órgão federal, estadual ou municipal, ou qualquer órgão regulamentador com jurisdição sobre esta parte; ou c) para atender às leis, ordens, regulamentos ou regras aplicáveis a esta parte. 4.Cada uma das partes declara-se ciente de que o manuseio
+                                                inadequado das Informações Confidenciais, sua divulgação ou revelação inadvertida ou desautorizada a quaisquer terceiros, representarão, por si só, prejuízo ao patrimônio da outra parte, podendo implicar a sua responsabilização civil e/ou criminal, de acordo com a violação verificada, obrigando-se ao ressarcimento das perdas e danos decorrentes. 5. Os termos deste Acordo obrigam as partes e seus sucessores. 6. Este Acordo terá
+                                                a validade de 05 (cinco) anos a contar da data de sua assinatura. 7. As PARTES declaram estar cientes das disposições previstas na Lei n. 13.709/2018 (Lei Geral de Proteção de Dados – “LGPD”) e que, desde o dia 16 de
+                                                agosto de 2020, estão aptas para cumpri-las no tratamento de todos e quaisquer dados pessoais realizado em razão do presente Contrato, de forma a garantir inteiramente os plenos direitos dos titulares de dados sendo seu descumprimento fundamento para rescisão contratual, a critério da COOPERATIVA DE TRABALHO DOS PROFISSIONAIS DA EDUCAÇÃO DO ESTADO DO RN (COOPEDU).</p>
+                                        </div>
                                         <label className="flex items-center gap-3 bg-gray-100 p-4 rounded-xl cursor-pointer hover:bg-gray-200 transition-colors text-left">
                                             <input type="checkbox" {...methods.register("aceiteLGPD")} className="w-6 h-6 accent-[#002B49]" />
                                             <span className="font-bold">Estou de acordo com os termos</span>

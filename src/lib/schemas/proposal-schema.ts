@@ -33,8 +33,8 @@ export const proposalSchema = z.object({
     corRaca: z.string().min(1, "Selecione"),
     estadoCivil: z.string().min(1, "Selecione"),
     nacionalidade: z.string().min(1, "Selecione"),
-    naturalidadeEstado: z.string().min(2).optional().or(z.literal('')), // Optional based on user code usage, but enforcing min 2 if present? User schema had .min(2)
-    naturalidadeMunicipio: z.string().min(2).optional().or(z.literal('')),
+    naturalidadeEstado: z.string().min(2, "Selecione o estado de nascimento"),
+    naturalidadeMunicipio: z.string().min(2, "Selecione o município de nascimento"),
     // Endereço
     cep: z.string().min(9, "CEP obrigatório"),
     estado: z.string().min(2),
