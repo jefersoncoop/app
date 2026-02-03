@@ -3,7 +3,7 @@
 import { getProposalById } from '@/actions/proposal-actions';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ChevronLeft, FileText, Download, Calendar, User, IdentificationCard, Phone, MapPin, Briefcase, Mail } from 'lucide-react';
+import { ChevronLeft, FileText, Download, Calendar, User, IdCard, Phone, MapPin, Briefcase, Mail } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export default function ProposalDetailPage() {
@@ -74,8 +74,8 @@ export default function ProposalDetailPage() {
                     <p className="text-gray-400 text-sm">Ficha enviada em: {new Date(proposal.createdAt).toLocaleString('pt-BR')}</p>
                 </div>
                 <div className={`px-4 py-2 rounded-xl text-sm font-black uppercase ${proposal.status === 'completed' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-                        proposal.status === 'documents_received' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-                            'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                    proposal.status === 'documents_received' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                        'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
                     }`}>
                     {proposal.status === 'completed' ? 'Concluída' :
                         proposal.status === 'documents_received' ? 'Documentos Recebidos' : 'Pendente'}
