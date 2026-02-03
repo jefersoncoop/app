@@ -2,7 +2,7 @@
 
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { campaignSchema, CampaignFormData } from '@/lib/schemas/campaign-schema';
+import { campaignSchema, CampaignFormData, CampaignFormValues } from '@/lib/schemas/campaign-schema';
 import { createCampaign, updateCampaign } from '@/actions/campaign-actions';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -21,16 +21,17 @@ export default function CampaignForm({ campaign }: { campaign?: any }) {
         active: true
     };
 
-    const { register, handleSubmit, formState: { errors } } = useForm<CampaignFormData>({
+    const { register, handleSubmit, formState: { errors } } = useForm({
         resolver: zodResolver(campaignSchema),
         defaultValues
     });
 
-    const onSubmit = async (data: CampaignFormData) => {
+    const onSubmit = async (data: any) => {
+        const validatedData = data as CampaignFormData;
         setIsSubmitting(true);
-        console.log("Form Submitting:", data);
+        console.log("Form Submitting:", validatedData);
         try {
-            const res = campaign ? await updateCampaign(campaign.id, data) : await createCampaign(data);
+            const res = campaign ? await updateCampaign(campaign.id, validatedData) : await createCampaign(validatedData);
             console.log("Server Response:", res);
 
             if (res.success) {

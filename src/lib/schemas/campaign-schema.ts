@@ -6,19 +6,20 @@ export const campaignSchema = z.object({
     bannerUrl: z.string().url("URL do banner inválida").optional().or(z.literal('')),
     clientId: z.string().min(1, "Client ID é obrigatório (CRM)"),
     functionId: z.string().min(1, "Function ID é obrigatório (CRM)"),
-    professions: z.preprocess(
-        (val) => {
-            if (typeof val === 'string') {
-                return val.split(',').map(s => s.trim()).filter(Boolean);
-            }
-            return val;
-        },
-        z.array(z.string()).min(1, "Adicione pelo menos uma profissão")
-    ),
+    professions: z.union([
+        z.string(),
+        z.array(z.string())
+    ]).transform((val) => {
+        if (typeof val === 'string') {
+            return val.split(',').map(s => s.trim()).filter(Boolean);
+        }
+        return val;
+    }).pipe(z.array(z.string()).min(1, "Adicione pelo menos uma profissão")),
     active: z.boolean().default(true),
 });
 
-export type CampaignFormData = z.infer<typeof campaignSchema>;
+export type CampaignFormValues = z.input<typeof campaignSchema>;
+export type CampaignFormData = z.output<typeof campaignSchema>;
 
 export interface Campaign extends CampaignFormData {
     id: string;
