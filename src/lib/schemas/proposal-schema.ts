@@ -23,9 +23,9 @@ export const proposalSchema = z.object({
     // Pessoais
     cpf: z.string().min(14, "CPF obrigatório").refine(validateCPF, "CPF inválido"),
     nomeCompleto: z.string().min(5, "Nome completo sem abreviações").max(70),
-    rg: z.string().min(5, "RG obrigatório"),
-    estadoExpedidor: z.string().min(2, "Selecione o estado"),
-    orgaoExpedidor: z.string().min(2, "Selecione o órgão"),
+    rg: z.string().optional().or(z.literal('')),
+    estadoExpedidor: z.string().optional().or(z.literal('')),
+    orgaoExpedidor: z.string().optional().or(z.literal('')),
     nomeMae: z.string().min(5, "Nome da mãe obrigatório").max(70),
     pis: z.string().min(14, "PIS/NIT deve conter 11 dígitos"),
     dataNascimento: z.string().length(10, "Data inválida (DD/MM/AAAA)"),

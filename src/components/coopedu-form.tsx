@@ -136,17 +136,16 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
         { id: 'intro1', progress: 0 },
         { id: 'intro2', progress: 0 },
         { id: 'cpf', progress: 5, fields: ['cpf', 'pis'] },
-        { id: 'nome', progress: 11, fields: ['nomeCompleto'] },
-        { id: 'rg', progress: 17, fields: ['rg', 'estadoExpedidor', 'orgaoExpedidor'] },
-        { id: 'mae', progress: 23, fields: ['nomeMae'] },
-        { id: 'pessoais', progress: 35, fields: ['dataNascimento', 'sexo', 'corRaca', 'estadoCivil'] },
+        { id: 'nome', progress: 12, fields: ['nomeCompleto'] },
+        { id: 'mae', progress: 18, fields: ['nomeMae'] },
+        { id: 'pessoais', progress: 30, fields: ['dataNascimento', 'sexo', 'corRaca', 'estadoCivil'] },
         { id: 'endereco', progress: 40, fields: ['cep', 'cidade', 'estado', 'logradouroNome', 'numero'] },
-        { id: 'contato', progress: 45, fields: ['telefone', 'email'] },
-        { id: 'profissional', progress: 55, fields: ['escolaridade', 'categoriaFuncao'] },
-        { id: 'logistica', progress: 60, fields: ['tamanhoCamisa'] },
-        { id: 'criterios', progress: 65, fields: ['criterioLocalidade', 'criterioExperiencia', 'criterioDisponibilidade'] },
-        { id: 'termos', progress: 70, fields: ['aceiteConcordancia'] },
-        { id: 'lgpd', progress: 75, fields: ['aceiteLGPD'] },
+        { id: 'contato', progress: 50, fields: ['telefone', 'email'] },
+        { id: 'profissional', progress: 60, fields: ['escolaridade', 'categoriaFuncao'] },
+        { id: 'logistica', progress: 70, fields: ['tamanhoCamisa'] },
+        { id: 'criterios', progress: 80, fields: ['criterioLocalidade', 'criterioExperiencia', 'criterioDisponibilidade'] },
+        { id: 'termos', progress: 90, fields: ['aceiteConcordancia'] },
+        { id: 'lgpd', progress: 95, fields: ['aceiteLGPD'] },
         { id: 'success', progress: 100 }
     ];
 
@@ -195,12 +194,17 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                 setSubmitError(result.message || "Erro ao enviar.");
             }
         } catch (err) {
-            console.error(err);
+            console.error("Submission error:", err);
             setSubmitError("Erro de conexão.");
         } finally {
             setIsSubmitting(false);
         }
     };
+
+    // Debugging validation errors
+    if (Object.keys(methods.formState.errors).length > 0) {
+        console.log("Form Validation Errors:", methods.formState.errors);
+    }
 
     return (
         <div className="min-h-screen bg-white font-sans text-[#333]">
@@ -329,20 +333,12 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
 
                                 {step === 5 && (
                                     <div className="space-y-6">
-                                        <InputField name="rg" label="RG" placeholder="00.000.000-0" />
-                                        <InputField name="orgaoExpedidor" label="Órgão Expedidor" placeholder="SSP" />
-                                        <SelectField name="estadoExpedidor" label="UF Expedidor" options={['SP', 'RJ', 'MG', 'RS', 'BA', 'PE', 'CE', 'PR', 'SC', 'GO', 'AM', 'PA', 'MT', 'MS', 'ES', 'PB', 'RN', 'AL', 'PI', 'MA', 'SE', 'TO', 'RO', 'AC', 'RR', 'AP', 'DF']} />
-                                    </div>
-                                )}
-
-                                {step === 6 && (
-                                    <div className="space-y-6">
                                         <InputField name="nomeMae" label="Nome da Mãe" placeholder="Nome completo da mãe" />
                                     </div>
                                 )}
 
                                 {/* TELA: DADOS PESSOAIS (35%) */}
-                                {step === 7 && (
+                                {step === 6 && (
                                     <div className="space-y-4">
                                         <InputField name="dataNascimento" label="Data de Nascimento" placeholder="DD/MM/AAAA" mask="date" />
                                         <SelectField name="sexo" label="Sexo" options={['Masculino', 'Feminino', 'Outro']} />
@@ -353,7 +349,7 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                 )}
 
                                 {/* Step 9: Endereco */}
-                                {step === 8 && (
+                                {step === 7 && (
                                     <div className="space-y-4">
                                         <InputField name="cep" label="CEP" placeholder="00000-000" mask="cep" />
                                         <div className="grid grid-cols-2 gap-4">
@@ -371,7 +367,7 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                 )}
 
                                 {/* Step 10: Contato */}
-                                {step === 9 && (
+                                {step === 8 && (
                                     <div className="space-y-4">
                                         <div className="grid grid-cols-1 gap-4">
                                             <div className="col-span-1"><InputField name="telefone" label="Telefone/Celular" placeholder="(00) 00000-0000" mask="phone" /></div>
@@ -381,7 +377,7 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                 )}
 
                                 {/* Step 12: Profissional */}
-                                {step === 10 && (
+                                {step === 9 && (
                                     <div className="space-y-4">
                                         <SelectField name="escolaridade" label="Escolaridade" options={['SEM ESCOLARIDADE', 'Ensino Fundamental Incompleto', 'Ensino Fundamental Completo', 'Ensino Médio Incompleto', 'Ensino Médio Completo', 'Ensino Superior Incompleto', 'Ensino Superior Completo', 'Pós-graduação (ESPECIALIZAÇÃO)', 'Pós-graduação (MESTRADO)', 'Pós-graduação (DOUTORADO)']} />
 
@@ -398,7 +394,7 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                 )}
 
                                 {/* TELA: LOGÍSTICA (60%) */}
-                                {step === 11 && (
+                                {step === 10 && (
                                     <div className="space-y-6">
                                         <label className="text-xl font-bold text-[#002B49]">Tamanho de sua camisa</label>
                                         <div className="grid grid-cols-3 gap-4">
@@ -413,7 +409,7 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                 )}
 
                                 {/* Step 12: Critérios de Escolha para Produção */}
-                                {step === 12 && (
+                                {step === 11 && (
                                     <div className="space-y-8">
                                         <h2 className="text-2xl font-bold text-[#002B49]">Critérios de Escolha para Produção</h2>
 
@@ -433,7 +429,7 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                                 </label>
                                             </div>
                                             {methods.formState.errors.criterioLocalidade && (
-                                                <p className="text-red-500 text-sm">{methods.formState.errors.criterioLocalidade.message}</p>
+                                                <p className="text-red-500 text-sm">{methods.formState.errors.criterioLocalidade?.message?.toString()}</p>
                                             )}
                                         </div>
 
@@ -453,7 +449,7 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                                 </label>
                                             </div>
                                             {methods.formState.errors.criterioExperiencia && (
-                                                <p className="text-red-500 text-sm">{methods.formState.errors.criterioExperiencia.message}</p>
+                                                <p className="text-red-500 text-sm">{methods.formState.errors.criterioExperiencia?.message?.toString()}</p>
                                             )}
                                         </div>
 
@@ -473,14 +469,14 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                                 </label>
                                             </div>
                                             {methods.formState.errors.criterioDisponibilidade && (
-                                                <p className="text-red-500 text-sm">{methods.formState.errors.criterioDisponibilidade.message}</p>
+                                                <p className="text-red-500 text-sm">{methods.formState.errors.criterioDisponibilidade?.message?.toString()}</p>
                                             )}
                                         </div>
                                     </div>
                                 )}
 
                                 {/* Step 13: Termos (Shifted from 12) */}
-                                {step === 13 && (
+                                {step === 12 && (
                                     <div className="space-y-6">
                                         <h2 className="text-2xl font-bold text-[#002B49]">Termos de Concordância</h2>
                                         <div className="h-40 overflow-y-auto bg-gray-50 p-4 rounded-xl border border-gray-200 text-sm">
@@ -492,14 +488,14 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                             <span className="font-bold">Li e concordo com os termos</span>
                                         </label>
                                         {methods.formState.errors.aceiteConcordancia && (
-                                            <p className="text-red-500 text-sm">{methods.formState.errors.aceiteConcordancia.message}</p>
+                                            <p className="text-red-500 text-sm">{methods.formState.errors.aceiteConcordancia?.message?.toString()}</p>
                                         )}
 
                                     </div>
                                 )}
 
                                 {/* TELA: LGPD (75%) */}
-                                {step === 14 && (
+                                {step === 13 && (
                                     <div className="space-y-6 text-center">
                                         <div className="flex justify-center"><ShieldCheck size={64} className="text-[#002B49]" /></div>
                                         <h2 className="text-2xl font-bold">Privacidade de Dados</h2>
@@ -509,7 +505,7 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                             <span className="font-bold">Estou de acordo com os termos</span>
                                         </label>
                                         {methods.formState.errors.aceiteLGPD && (
-                                            <p className="text-red-500 text-sm">{methods.formState.errors.aceiteLGPD.message}</p>
+                                            <p className="text-red-500 text-sm">{methods.formState.errors.aceiteLGPD?.message?.toString()}</p>
                                         )}
                                     </div>
                                 )}
@@ -537,8 +533,8 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                         {/* BARRA DE NAVEGAÇÃO INFERIOR */}
                         {step > 2 && step < steps.length - 1 && (
                             <div className="fixed bottom-0 left-0 right-0 p-6 bg-white/80 backdrop-blur-md flex justify-end items-center border-t z-40">
-                                {step === 14 ? (
-                                    // Should be 14 based on Logic above for LGPD being the last step before success
+                                {step === 13 ? (
+                                    // Should be 13 based on Logic above for LGPD being the last step before success
                                     <button
                                         type="submit"
                                         disabled={isSubmitting}

@@ -16,10 +16,18 @@ export default function UploadManager({ proposalId, userName }: UploadManagerPro
     const [isFinalizing, setIsFinalizing] = useState(false);
     const [isFinished, setIsFinished] = useState(false);
 
-    const docTypes = [
-        { id: 'rg_cnh', label: 'RG ou CNH', desc: 'Frente e Verso ou arquivo digital (PDF)' },
+    const REQUIRED_DOCS = [
+        { id: 'identidade_frente', label: 'Documento de Identidade com CPF', desc: 'Frente do documento' },
+        { id: 'identidade_verso', label: 'Documento de Identidade com CPF/Verso', desc: 'Verso do documento' },
+        { id: 'comprovante_pis', label: 'Comprovante do número PIS/PASEP/NIT', desc: 'Extrato ou print do app' },
         { id: 'comprovante_residencia', label: 'Comprovante de Residência', desc: 'Conta de luz, água ou telefone recente' },
-        { id: 'foto_perfil', label: 'Foto de Perfil (Selfie)', desc: 'Uma foto atual do seu rosto para identificação' }
+    ];
+
+    const OPTIONAL_DOCS = [
+        { id: 'cnh', label: 'CNH', desc: 'Carteira Nacional de Habilitação' },
+        { id: 'certidao', label: 'Certidão de Nascimento ou Casamento', desc: 'Certidão legível' },
+        { id: 'curriculo', label: 'Currículo', desc: 'Seu currículo atualizado' },
+        { id: 'diploma', label: 'Diploma', desc: 'Comprovante de escolaridade' },
     ];
 
     const handleSuccess = (id: string) => {
@@ -67,23 +75,48 @@ export default function UploadManager({ proposalId, userName }: UploadManagerPro
         );
     }
 
-    const allUploaded = uploadedDocs.size >= docTypes.length;
+    const allRequiredUploaded = REQUIRED_DOCS.every(doc => uploadedDocs.has(doc.id));
 
     return (
-        <div className="space-y-6">
-            {docTypes.map((doc) => (
-                <UploadZone
-                    key={doc.id}
-                    proposalId={proposalId}
-                    docType={doc.id}
-                    label={doc.label}
-                    description={doc.desc}
-                    onSuccess={() => handleSuccess(doc.id)}
-                />
-            ))}
+        <div className="space-y-10">
+            <section className="space-y-4">
+                <h3 className="text-xl font-black text-[#002B49] border-b-2 border-[#CCFF00] pb-2 uppercase italic tracking-tighter">
+                    Bloco Obrigatórios
+                </h3>
+                <div className="space-y-4">
+                    {REQUIRED_DOCS.map((doc) => (
+                        <UploadZone
+                            key={doc.id}
+                            proposalId={proposalId}
+                            docType={doc.id}
+                            label={doc.label}
+                            description={doc.desc}
+                            onSuccess={() => handleSuccess(doc.id)}
+                        />
+                    ))}
+                </div>
+            </section>
+
+            <section className="space-y-4">
+                <h3 className="text-xl font-black text-gray-400 border-b-2 border-gray-100 pb-2 uppercase italic tracking-tighter">
+                    Bloco Opcional
+                </h3>
+                <div className="space-y-4">
+                    {OPTIONAL_DOCS.map((doc) => (
+                        <UploadZone
+                            key={doc.id}
+                            proposalId={proposalId}
+                            docType={doc.id}
+                            label={doc.label}
+                            description={doc.desc}
+                            onSuccess={() => handleSuccess(doc.id)}
+                        />
+                    ))}
+                </div>
+            </section>
 
             <AnimatePresence>
-                {allUploaded && (
+                {allRequiredUploaded && (
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
