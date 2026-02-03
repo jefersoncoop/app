@@ -70,6 +70,7 @@ export const proposalSchema = z.object({
     campaignId: z.string().optional(),
     clientId: z.string().optional(),
     functionId: z.string().optional(),
+    ddd: z.string().optional(),
 });
 
 export type ProposalFormData = z.infer<typeof proposalSchema>;
