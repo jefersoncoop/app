@@ -390,8 +390,8 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                             <CitySelectField name="cidade" label="Cidade" stateFieldName="estado" />
 
                                         </div>
-                                        <SelectField name="logradouroTipo" label="Tipo" options={['Rua', 'Avenida', 'Estrada', 'Rodovia', 'Alameda', 'Travessa', 'Praça']} />
-                                        <InputField name="logradouroNome" label="Logradouro" />
+                                        <SelectField name="logradouroTipo" label="Tipo" options={['Rua', 'Avenida', 'Estrada', 'Rodovia', 'Alameda', 'Travessa', 'Praça', 'Comunidade', 'Sitio', 'Viela', 'Vila']} />
+                                        <InputField name="logradouroNome" label="Endereço" />
                                         <div className="grid grid-cols-2 gap-4">
                                             <InputField name="numero" label="Número" />
                                             <InputField name="bairro" label="Bairro" />
