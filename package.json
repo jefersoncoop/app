@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "npm run prep && next dev",
+    "build": "npm run prep && next build",
+    "prep": "node scripts/fetch-ibge.mjs",
     "start": "next start",
     "lint": "eslint"
   },

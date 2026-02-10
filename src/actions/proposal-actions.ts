@@ -47,10 +47,19 @@ export async function submitProposal(data: ProposalFormData): Promise<SubmitResu
             ? phoneDigits
             : `55${phoneDigits}`;
 
-        await notifyExternalService({
+        const notificationResult = await notifyExternalService({
             nome: authorizedData.nomeCompleto,
             link: `/${uploadToken}`,
             numero: formattedPhone
+        });
+
+        // Log notification in Firestore
+        await docRef.collection("notifications").add({
+            type: "initial",
+            status: notificationResult.success ? "success" : "error",
+            timestamp: new Date().toISOString(),
+            error: notificationResult.message || null,
+            payload: { nome: authorizedData.nomeCompleto, link: `/${uploadToken}`, numero: formattedPhone }
         });
 
         return { success: true, id: docRef.id };
@@ -74,22 +83,194 @@ async function notifyExternalService(payload: { nome: string, link: string, nume
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`External API Error (${response.status}):`, errorText);
+            return { success: false, message: `Erro API (${response.status}): ${errorText}` };
         } else {
             const result = await response.json();
             console.log("External API Success:", result);
+            return { success: true };
         }
     } catch (error) {
         console.error("Failed to call external API:", error);
+        return { success: false, message: error instanceof Error ? error.message : "Erro de conexão" };
     }
 }
 
-export async function getProposals() {
+export async function resendInitialNotification(proposalId: string) {
     try {
         const db = getAdminDb();
-        const snapshot = await db.collection('proposals').orderBy('createdAt', 'desc').limit(50).get();
+        const docRef = db.collection("proposals").doc(proposalId);
+        const doc = await docRef.get();
+
+        if (!doc.exists) return { success: false, message: "Proposta não encontrada" };
+        const data = doc.data()!;
+
+        const phoneDigits = (data.telefone || "").replace(/\D/g, '');
+        const formattedPhone = phoneDigits.startsWith('55') && phoneDigits.length > 11 ? phoneDigits : `55${phoneDigits}`;
+
+        const payload = {
+            nome: data.nomeCompleto,
+            link: `/${data.uploadToken}`,
+            numero: formattedPhone
+        };
+
+        const result = await notifyExternalService(payload);
+
+        await docRef.collection("notifications").add({
+            type: "initial",
+            status: result.success ? "success" : "error",
+            timestamp: new Date().toISOString(),
+            error: result.message || null,
+            payload
+        });
+
+        return result;
+    } catch (e) {
+        console.error("Error resending initial notification:", e);
+        return { success: false, message: "Erro interno ao reenviar" };
+    }
+}
+
+export async function getProposalsByCampaign(campaignId: string, limitCount: number = 50, lastId?: string, sortBy: 'createdAt' | 'nomeCompleto' = 'createdAt') {
+    try {
+        const db = getAdminDb();
+        let query: any = db.collection('proposals');
+
+        if (campaignId === 'uncategorized') {
+            query = query.where('campaignId', 'in', ['uncategorized', null]);
+        } else {
+            query = query.where('campaignId', '==', campaignId);
+        }
+
+        const orderDir = sortBy === 'createdAt' ? 'desc' : 'asc';
+        query = query.orderBy(sortBy, orderDir);
+
+        // Add secondary sort for stability (document IDs)
+        query = query.orderBy('__name__', orderDir);
+
+        query = query.limit(limitCount);
+
+        if (lastId) {
+            const lastDoc = await db.collection('proposals').doc(lastId).get();
+            if (lastDoc.exists) {
+                query = query.startAfter(lastDoc);
+            }
+        }
+
+        const snapshot = await query.get();
+        return snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+    } catch (e) {
+        console.error("Error fetching proposals by campaign:", e);
+        return [];
+    }
+}
+export async function deleteProposal(proposalId: string) {
+    try {
+        const db = getAdminDb();
+        await db.collection("proposals").doc(proposalId).delete();
+        return { success: true };
+    } catch (error) {
+        console.error("Error deleting proposal:", error);
+        return { success: false, message: "Erro ao excluir proposta." };
+    }
+}
+
+export async function cleanupDuplicateProposals(campaignId: string) {
+    try {
+        const db = getAdminDb();
+        let query: any = db.collection('proposals');
+
+        if (campaignId === 'uncategorized') {
+            query = query.where('campaignId', 'in', ['uncategorized', null]);
+        } else {
+            query = query.where('campaignId', '==', campaignId);
+        }
+
+        // Fetch all proposals for this campaign (might be slow if many, but simpler for cleanup logic)
+        const snapshot = await query.get();
+        const proposals = snapshot.docs.map((doc: any) => ({ id: doc.id, ...(doc.data() as any) }));
+
+        // Group by CPF
+        const groupedByCPF: Record<string, any[]> = {};
+        proposals.forEach((p: any) => {
+            if (!groupedByCPF[p.cpf]) groupedByCPF[p.cpf] = [];
+            groupedByCPF[p.cpf].push(p);
+        });
+
+        let deletedCount = 0;
+        const batch = db.batch();
+
+        for (const cpf in groupedByCPF) {
+            const list = groupedByCPF[cpf];
+            if (list.length > 1) {
+                // Sort by createdAt desc
+                list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+                // Keep the first (newest), delete others
+                for (let i = 1; i < list.length; i++) {
+                    batch.delete(db.collection('proposals').doc(list[i].id));
+                    deletedCount++;
+                }
+            }
+        }
+
+        if (deletedCount > 0) {
+            await batch.commit();
+        }
+
+        return { success: true, deletedCount };
+    } catch (error) {
+        console.error("Error cleaning duplicates:", error);
+        return { success: false, message: "Erro ao limpar duplicados." };
+    }
+}
+
+export async function getProposals(limitCount: number = 50, lastId?: string) {
+    try {
+        const db = getAdminDb();
+        let query = db.collection('proposals').orderBy('createdAt', 'desc').limit(limitCount);
+
+        if (lastId) {
+            const lastDoc = await db.collection('proposals').doc(lastId).get();
+            if (lastDoc.exists) {
+                query = query.startAfter(lastDoc);
+            }
+        }
+
+        const snapshot = await query.get();
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     } catch (e) {
         console.error("Error fetching proposals:", e);
+        return [];
+    }
+}
+
+export async function searchProposals(searchTerm: string) {
+    try {
+        const db = getAdminDb();
+        const term = searchTerm.trim().toUpperCase();
+
+        // Exact CPF match check first (if it looks like a CPF)
+        const cpfDigits = term.replace(/\D/g, '');
+
+        let query;
+        if (cpfDigits.length >= 8) {
+            // Search by CPF prefix if it's long enough
+            query = db.collection('proposals')
+                .where('cpf', '>=', cpfDigits)
+                .where('cpf', '<=', cpfDigits + '\uf8ff')
+                .limit(50);
+        } else {
+            // Search by Name prefix
+            query = db.collection('proposals')
+                .where('nomeCompleto', '>=', term)
+                .where('nomeCompleto', '<=', term + '\uf8ff')
+                .limit(50);
+        }
+
+        const snapshot = await query.get();
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (e) {
+        console.error("Error searching proposals:", e);
         return [];
     }
 }
@@ -105,10 +286,14 @@ export async function getProposalById(id: string) {
         const docsSnapshot = await docRef.collection("documents").orderBy("uploadedAt", "desc").get();
         const documents = docsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
+        const notificationsSnapshot = await docRef.collection("notifications").orderBy("timestamp", "desc").get();
+        const notifications = notificationsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
         return {
             id: doc.id,
             ...doc.data(),
-            documents
+            documents,
+            notifications
         };
     } catch (error) {
         console.error("Error fetching proposal by ID:", error);

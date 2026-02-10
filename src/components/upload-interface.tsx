@@ -20,17 +20,75 @@ export default function UploadZone({ proposalId, docType, label, description, on
     const [progress, setProgress] = useState(0);
     const [fileName, setFileName] = useState('');
 
+    const compressImage = (file: File): Promise<Blob | File> => {
+        return new Promise((resolve) => {
+            if (!file.type.startsWith('image/') || file.type === 'image/gif') {
+                resolve(file);
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target?.result as string;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    const MAX_SIZE = 1280;
+
+                    if (width > height) {
+                        if (width > MAX_SIZE) {
+                            height *= MAX_SIZE / width;
+                            width = MAX_SIZE;
+                        }
+                    } else {
+                        if (height > MAX_SIZE) {
+                            width *= MAX_SIZE / height;
+                            height = MAX_SIZE;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx?.drawImage(img, 0, 0, width, height);
+
+                    canvas.toBlob(
+                        (blob) => {
+                            if (blob) {
+                                // If compression didn't actually help, use original
+                                resolve(blob.size < file.size ? blob : file);
+                            } else {
+                                resolve(file);
+                            }
+                        },
+                        'image/jpeg',
+                        0.7
+                    );
+                };
+                img.onerror = () => resolve(file);
+            };
+            reader.onerror = () => resolve(file);
+        });
+    };
+
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+        const originalFile = e.target.files?.[0];
+        if (!originalFile) return;
 
         setStatus('uploading');
-        setFileName(file.name);
+        setFileName(originalFile.name);
         setProgress(0);
 
         try {
+            // 0. Compress if image
+            const file = await compressImage(originalFile);
+            console.log(`Original: ${originalFile.size} bytes, Compressed: ${file.size} bytes`);
+
             // 1. Upload to Firebase Storage
-            const storageRef = ref(storage, `uploads/${proposalId}/${docType}_${Date.now()}_${file.name}`);
+            const storageRef = ref(storage, `uploads/${proposalId}/${docType}_${Date.now()}_${originalFile.name}`);
             const uploadTask = uploadBytesResumable(storageRef, file);
 
             uploadTask.on('state_changed',
@@ -47,7 +105,7 @@ export default function UploadZone({ proposalId, docType, label, description, on
                     const url = await getDownloadURL(uploadTask.snapshot.ref);
 
                     // 3. Save Metadata
-                    const res = await saveDocumentMetadata(proposalId, url, file.name, docType);
+                    const res = await saveDocumentMetadata(proposalId, url, originalFile.name, docType);
                     if (res.success) {
                         setStatus('success');
                         if (onSuccess) onSuccess();

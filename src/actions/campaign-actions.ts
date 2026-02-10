@@ -91,6 +91,41 @@ export async function getCampaigns() {
     }
 }
 
+export async function getCampaignsWithCounts() {
+    try {
+        const db = getAdminDb();
+        const campaigns = await getCampaigns();
+
+        // Fetch counts for all campaigns in parallel
+        const campaignsWithCounts = await Promise.all(campaigns.map(async (camp) => {
+            const countSnapshot = await db.collection('proposals').where('campaignId', '==', camp.id).count().get();
+            return {
+                ...camp,
+                proposalCount: countSnapshot.data().count
+            };
+        }));
+
+        // Handle uncategorized if any
+        const uncategorizedCount = await db.collection('proposals').where('campaignId', '==', 'uncategorized').count().get();
+        const nullCount = await db.collection('proposals').where('campaignId', '==', null).count().get();
+        const totalUncategorized = uncategorizedCount.data().count + nullCount.data().count;
+
+        if (totalUncategorized > 0) {
+            campaignsWithCounts.push({
+                id: 'uncategorized',
+                name: 'Sem Campanha Vinculada',
+                proposalCount: totalUncategorized,
+                active: true
+            } as any);
+        }
+
+        return campaignsWithCounts;
+    } catch (e) {
+        console.error("getCampaignsWithCounts Error:", e);
+        return [];
+    }
+}
+
 export async function getCampaignBySlug(slug: string) {
     try {
         const db = getAdminDb();

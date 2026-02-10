@@ -1,127 +1,371 @@
 'use client';
 
-import { getProposals } from '@/actions/proposal-actions';
-import { getCampaigns } from '@/actions/campaign-actions';
+import { getProposals, searchProposals, getProposalsByCampaign, deleteProposal } from '@/actions/proposal-actions';
+import { getCampaignsWithCounts } from '@/actions/campaign-actions';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Eye, FileText, Loader2, RefreshCw, LayoutList } from 'lucide-react';
+import { Eye, FileText, Loader2, RefreshCw, LayoutList, Search, X, ChevronDown, ChevronUp, Trash2, SortAsc, Calendar, LinkIcon, Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function ProposalsPage() {
-    const [proposals, setProposals] = useState<any[]>([]);
     const [campaigns, setCampaigns] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isSearching, setIsSearching] = useState(false);
+    const [searchResults, setSearchResults] = useState<any[]>([]);
 
-    const fetchData = async () => {
+    // Sub-state for expanded campaign
+    const [campaignProposals, setCampaignProposals] = useState<any[]>([]);
+    const [campLoading, setCampLoading] = useState(false);
+    const [sortBy, setSortBy] = useState<'createdAt' | 'nomeCompleto'>('createdAt');
+    const [page, setPage] = useState(1);
+    const [markers, setMarkers] = useState<string[]>([]);
+    const PAGE_SIZE = 50;
+
+    const fetchCampaigns = async () => {
         setLoading(true);
-        const [propsRes, campsRes] = await Promise.all([
-            getProposals(),
-            getCampaigns()
-        ]);
-        setProposals(propsRes);
+        const campsRes = await getCampaignsWithCounts();
         setCampaigns(campsRes);
         setLoading(false);
     };
 
     useEffect(() => {
-        fetchData();
+        fetchCampaigns();
     }, []);
 
-    // Grouping Logic
-    const groupedProposals = proposals.reduce((acc, proposal) => {
-        const campaignId = proposal.campaignId || 'uncategorized';
-        if (!acc[campaignId]) acc[campaignId] = [];
-        acc[campaignId].push(proposal);
-        return acc;
-    }, {} as Record<string, any[]>);
+    const fetchProposalsForCampaign = async (campaignId: string, marker?: string, currentSort = sortBy) => {
+        setCampLoading(true);
+        const propsRes = await getProposalsByCampaign(campaignId, PAGE_SIZE, marker, currentSort);
+        setCampaignProposals(propsRes);
+        setCampLoading(false);
+    };
 
-    // Helper to get campaign name
-    const getCampaignName = (id: string) => {
-        if (id === 'uncategorized') return 'Sem Campanha Vinculada';
-        const camp = campaigns.find(c => c.id === id);
-        return camp ? camp.name : 'Campanha Desconhecida / Removida';
+    const toggleExpand = (campaignId: string) => {
+        if (expandedCampaignId === campaignId) {
+            setExpandedCampaignId(null);
+            setCampaignProposals([]);
+            setPage(1);
+            setMarkers([]);
+        } else {
+            setExpandedCampaignId(campaignId);
+            setCampaignProposals([]);
+            setPage(1);
+            setMarkers([]);
+            fetchProposalsForCampaign(campaignId);
+        }
+    };
+
+    const handleSortChange = (newSort: 'createdAt' | 'nomeCompleto') => {
+        if (!expandedCampaignId || newSort === sortBy) return;
+        setSortBy(newSort);
+        setPage(1);
+        setMarkers([]);
+        fetchProposalsForCampaign(expandedCampaignId, undefined, newSort);
+    };
+
+    const handleNextPage = () => {
+        if (!expandedCampaignId || campaignProposals.length < PAGE_SIZE) return;
+        const lastId = campaignProposals[campaignProposals.length - 1].id;
+        setMarkers([...markers, lastId]);
+        setPage(page + 1);
+        fetchProposalsForCampaign(expandedCampaignId, lastId);
+    };
+
+    const handlePrevPage = () => {
+        if (!expandedCampaignId || page === 1) return;
+        const newMarkers = [...markers];
+        newMarkers.pop();
+        const prevMarker = newMarkers.length > 0 ? newMarkers[newMarkers.length - 1] : undefined;
+        setMarkers(newMarkers);
+        setPage(page - 1);
+        fetchProposalsForCampaign(expandedCampaignId, prevMarker);
+    };
+
+    const handleSearch = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!searchTerm.trim()) {
+            handleClearSearch();
+            return;
+        }
+        setLoading(true);
+        setIsSearching(true);
+        setExpandedCampaignId(null);
+        const results = await searchProposals(searchTerm);
+        setSearchResults(results);
+        setLoading(false);
+    };
+
+    const handleClearSearch = () => {
+        setSearchTerm('');
+        setIsSearching(false);
+        setSearchResults([]);
+        fetchCampaigns();
+    };
+
+    const handleDelete = async (proposalId: string) => {
+        if (!confirm("Tem certeza que deseja excluir esta proposta? Esta ação não pode ser desfeita.")) return;
+
+        setCampLoading(true);
+        const result = await deleteProposal(proposalId);
+        if (result.success) {
+            // Refresh counts and current view
+            await fetchCampaigns();
+            if (expandedCampaignId) {
+                await fetchProposalsForCampaign(expandedCampaignId);
+            }
+            if (isSearching) {
+                const results = await searchProposals(searchTerm);
+                setSearchResults(results);
+            }
+        } else {
+            alert(result.message || "Erro ao excluir proposta.");
+        }
+        setCampLoading(false);
     };
 
     return (
         <div className="space-y-8">
             <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-2xl font-bold text-[#002B49]">Propostas por Campanha</h1>
-                    <p className="text-gray-500">Gerencie as fichas de adesão organizadas por origem.</p>
+                    <h1 className="text-2xl font-bold text-[#002B49]">Propostas por Formulário</h1>
+                    <p className="text-gray-500">Gerencie as adesões organizadas por formulário.</p>
                 </div>
-                <button
-                    onClick={fetchData}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 text-sm font-bold text-[#002B49]"
-                >
-                    <RefreshCw size={16} /> Atualizar
-                </button>
+                <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
+                    <form onSubmit={handleSearch} className="relative w-full md:w-80">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <input
+                            type="text"
+                            placeholder="Buscar por Nome ou CPF..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-10 py-2 border rounded-xl focus:ring-2 focus:ring-[#002B49] focus:outline-none text-sm"
+                        />
+                        {searchTerm && (
+                            <button
+                                type="button"
+                                onClick={handleClearSearch}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"
+                            >
+                                <X size={16} />
+                            </button>
+                        )}
+                    </form>
+                    <button
+                        onClick={() => isSearching ? handleSearch() : fetchCampaigns()}
+                        className="flex items-center gap-2 px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 text-sm font-bold text-[#002B49]"
+                    >
+                        <RefreshCw size={16} /> {isSearching ? 'Refazer Busca' : 'Atualizar'}
+                    </button>
+                </div>
             </div>
 
             {loading ? (
                 <div className="flex justify-center p-12">
                     <Loader2 className="animate-spin text-[#002B49]" size={48} />
                 </div>
-            ) : Object.keys(groupedProposals).length === 0 ? (
-                <div className="text-center p-12 bg-white rounded-2xl shadow-sm border">
-                    <FileText className="mx-auto text-gray-300 mb-4" size={48} />
-                    <h3 className="text-lg font-bold text-gray-700">Nenhuma proposta encontrada</h3>
-                    <p className="text-gray-500">As novas adesões aparecerão aqui.</p>
+            ) : isSearching ? (
+                /* SEARCH RESULTS VIEW */
+                <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+                    <div className="bg-blue-50 px-6 py-4 border-b flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <Search className="text-[#002B49]" size={20} />
+                            <h3 className="font-bold text-[#002B49]">Resultados da Busca</h3>
+                            <span className="text-xs bg-white px-2 py-1 rounded-full text-gray-700 font-bold border">
+                                {searchResults.length}
+                            </span>
+                        </div>
+                        <button onClick={handleClearSearch} className="text-sm text-blue-600 font-bold underline">Voltar</button>
+                    </div>
+                    <ProposalsTable proposals={searchResults} onDelete={handleDelete} />
+                    {searchResults.length === 0 && (
+                        <div className="p-12 text-center text-gray-500 italic">Nenhum resultado encontrado.</div>
+                    )}
                 </div>
             ) : (
-                <div className="space-y-8">
-                    {/* Iterate over campaigns (prioritize active/known ones) or just keys */}
-                    {Object.keys(groupedProposals).map(campaignId => (
-                        <div key={campaignId} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                            <div className="bg-gray-50 px-6 py-4 border-b flex items-center gap-3">
-                                <LayoutList className="text-[#002B49]" size={20} />
-                                <h3 className="font-bold text-lg text-[#002B49]">{getCampaignName(campaignId)}</h3>
-                                <span className="text-xs bg-gray-200 px-2 py-1 rounded-full text-gray-700 font-bold">
-                                    {groupedProposals[campaignId].length}
-                                </span>
+                /* CAMPAIGNS LIST VIEW */
+                <div className="space-y-4">
+                    {campaigns.map((camp) => (
+                        <div key={camp.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                            {/* Campaign Header Row */}
+                            <div
+                                onClick={() => toggleExpand(camp.id)}
+                                className={`px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors ${expandedCampaignId === camp.id ? 'bg-gray-50 border-b' : ''}`}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={`p-2 rounded-lg ${expandedCampaignId === camp.id ? 'bg-[#002B49] text-white' : 'bg-gray-100 text-[#002B49]'}`}>
+                                        <LayoutList size={22} />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-lg text-[#002B49]">{camp.name}</h3>
+                                        <p className="text-sm text-gray-500">{camp.slug}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-6">
+                                    <div className="text-right">
+                                        <div className="text-sm text-gray-500 uppercase tracking-wider font-bold">Propostas</div>
+                                        <div className="text-2xl font-black text-[#002B49]">{camp.proposalCount}</div>
+                                    </div>
+                                    {expandedCampaignId === camp.id ? <ChevronUp className="text-gray-400" /> : <ChevronDown className="text-gray-400" />}
+                                </div>
                             </div>
-                            <table className="w-full text-left">
-                                <thead className="text-gray-500 text-sm uppercase tracking-wider border-b bg-white">
-                                    <tr>
-                                        <th className="p-4 font-bold">Data</th>
-                                        <th className="p-4 font-bold">Nome</th>
-                                        <th className="p-4 font-bold">CPF</th>
-                                        <th className="p-4 font-bold">Status</th>
-                                        <th className="p-4 font-bold text-right">Ações</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {groupedProposals[campaignId].map((p: any) => (
-                                        <tr key={p.id} className="hover:bg-blue-50 transition-colors">
-                                            <td className="p-4 text-sm text-gray-500">
-                                                {new Date(p.createdAt).toLocaleDateString('pt-BR')} <br />
-                                                <span className="text-xs">{new Date(p.createdAt).toLocaleTimeString('pt-BR')}</span>
-                                            </td>
-                                            <td className="p-4 font-bold text-[#002B49]">{p.nomeCompleto}</td>
-                                            <td className="p-4 text-gray-600 font-mono text-sm">{p.cpf}</td>
-                                            <td className="p-4">
-                                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${p.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                                    p.status === 'pending_documents' ? 'bg-yellow-100 text-yellow-800' :
-                                                        p.status === 'documents_received' ? 'bg-blue-100 text-blue-800' :
-                                                            'bg-gray-100 text-gray-800'
-                                                    }`}>
-                                                    {p.status === 'completed' ? 'Concluído' :
-                                                        p.status === 'pending_documents' ? 'Aguardando Docs' :
-                                                            p.status === 'documents_received' ? 'Docs Recebidos' :
-                                                                p.status}
-                                                </span>
-                                            </td>
-                                            <td className="p-4 text-right">
-                                                <Link href={`/admin/proposals/${p.id}`} className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 hover:bg-[#002B49] hover:text-white transition-colors">
-                                                    <Eye size={16} />
-                                                </Link>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+
+                            {/* Expanded Section */}
+                            <AnimatePresence>
+                                {expandedCampaignId === camp.id && (
+                                    <motion.div
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: 'auto', opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        className="overflow-hidden"
+                                    >
+                                        <div className="p-6 bg-white border-t space-y-4">
+                                            {/* Sorting Controls */}
+                                            <div className="flex justify-end gap-2 mb-2">
+                                                <button
+                                                    onClick={() => handleSortChange('createdAt')}
+                                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${sortBy === 'createdAt'
+                                                        ? 'bg-[#002B49] text-white border-[#002B49]'
+                                                        : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                                                        }`}
+                                                >
+                                                    <Calendar size={14} /> POR DATA
+                                                </button>
+                                                <button
+                                                    onClick={() => handleSortChange('nomeCompleto')}
+                                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${sortBy === 'nomeCompleto'
+                                                        ? 'bg-[#002B49] text-white border-[#002B49]'
+                                                        : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                                                        }`}
+                                                >
+                                                    <SortAsc size={14} /> A-Z
+                                                </button>
+                                            </div>
+
+                                            {campLoading ? (
+                                                <div className="flex justify-center py-12">
+                                                    <Loader2 className="animate-spin text-[#002B49]" size={32} />
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <ProposalsTable proposals={campaignProposals} onDelete={handleDelete} />
+
+                                                    {/* PAGINATION WITHIN EXPANDED VIEW */}
+                                                    <div className="flex items-center justify-between mt-4">
+                                                        <div className="text-sm text-gray-500 font-medium">
+                                                            Página <span className="font-bold text-[#002B49]">{page}</span>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={handlePrevPage}
+                                                                disabled={page === 1 || campLoading}
+                                                                className="px-4 py-2 border rounded-lg text-xs font-bold hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                                                            >
+                                                                ANTERIOR
+                                                            </button>
+                                                            <button
+                                                                onClick={handleNextPage}
+                                                                disabled={campaignProposals.length < PAGE_SIZE || campLoading}
+                                                                className="px-4 py-2 bg-[#002B49] text-white rounded-lg text-xs font-bold hover:bg-[#001f35] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                                                            >
+                                                                PRÓXIMO
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
                         </div>
                     ))}
                 </div>
             )}
+        </div>
+    );
+}
+
+// Helper component for copying link
+function CopyButton({ uploadToken }: { uploadToken: string }) {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = async () => {
+        const url = `${window.location.origin}/upload/${uploadToken}`;
+        try {
+            await navigator.clipboard.writeText(url);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+            console.error('Failed to copy: ', err);
+        }
+    };
+
+    return (
+        <button
+            onClick={handleCopy}
+            className={`inline-flex items-center justify-center w-7 h-7 rounded-full transition-colors border ${copied ? 'bg-green-100 text-green-600 border-green-200' : 'bg-gray-50 hover:bg-[#002B49] hover:text-white'}`}
+            title="Copiar Link de Documentos"
+        >
+            {copied ? <Check size={14} /> : <LinkIcon size={14} />}
+        </button>
+    );
+}
+
+// Sub-component for the Proposals Table to keep main component cleaner
+function ProposalsTable({ proposals, onDelete }: { proposals: any[], onDelete: (id: string) => void }) {
+    if (proposals.length === 0) return null;
+
+    return (
+        <div className="overflow-x-auto">
+            <table className="w-full text-left">
+                <thead className="text-gray-500 text-xs uppercase tracking-wider border-b bg-gray-50/50">
+                    <tr>
+                        <th className="p-4 font-bold">Data</th>
+                        <th className="p-4 font-bold">Nome</th>
+                        <th className="p-4 font-bold">CPF</th>
+                        <th className="p-4 font-bold">Status</th>
+                        <th className="p-4 font-bold text-right">Ações</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                    {proposals.map((p: any) => (
+                        <tr key={p.id} className="hover:bg-blue-50 transition-colors">
+                            <td className="p-4 text-xs text-gray-500">
+                                {new Date(p.createdAt).toLocaleDateString('pt-BR')} <br />
+                                <span className="text-[10px]">{new Date(p.createdAt).toLocaleTimeString('pt-BR')}</span>
+                            </td>
+                            <td className="p-4 font-bold text-[#002B49] text-sm">{p.nomeCompleto}</td>
+                            <td className="p-4 text-gray-600 font-mono text-xs">{p.cpf}</td>
+                            <td className="p-4">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${p.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                    p.status === 'pending_documents' ? 'bg-yellow-100 text-yellow-800' :
+                                        p.status === 'documents_received' ? 'bg-blue-100 text-blue-800' :
+                                            'bg-gray-100 text-gray-800'
+                                    }`}>
+                                    {p.status === 'completed' ? 'Concluído' :
+                                        p.status === 'pending_documents' ? 'Aguardando Docs' :
+                                            p.status === 'documents_received' ? 'Docs Recebidos' :
+                                                p.status}
+                                </span>
+                            </td>
+                            <td className="p-4 text-right flex justify-end gap-2">
+                                <Link href={`/admin/proposals/${p.id}`} className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-50 hover:bg-[#002B49] hover:text-white transition-colors border" title="Ver Detalhes">
+                                    <Eye size={14} />
+                                </Link>
+                                <CopyButton uploadToken={p.uploadToken} />
+                                <button
+                                    onClick={() => onDelete(p.id)}
+                                    className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-50 hover:bg-red-600 hover:text-white transition-colors border text-red-600"
+                                    title="Excluir"
+                                >
+                                    <Trash2 size={14} />
+                                </button>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
         </div>
     );
 }

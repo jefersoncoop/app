@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, CheckCircle, Info, ShieldCheck } from 'lucide-react';
 import { proposalSchema, ProposalFormData } from '@/lib/schemas/proposal-schema';
 import { submitProposal } from '@/actions/proposal-actions';
+import statesCitiesData from '@/data/ibge-states-cities.json';
 
 // --- COMPONENTES AUXILIARES DE UI ---
 interface FieldProps {
@@ -122,43 +123,20 @@ const SelectField = ({ name, label, options }: SelectProps) => {
 };
 
 const CitySelectField = ({ name, label, stateFieldName }: { name: string, label: string, stateFieldName: string }) => {
-    const { register, watch, setValue, formState: { errors } } = useFormContext();
-    const [cities, setCities] = useState<string[]>([]);
-    const [loading, setLoading] = useState(false);
+    const { register, watch, formState: { errors } } = useFormContext();
     const selectedState = watch(stateFieldName);
+    const cities = selectedState ? (statesCitiesData as Record<string, string[]>)[selectedState] || [] : [];
     const error = errors[name]?.message as string | undefined;
-
-    useEffect(() => {
-        if (!selectedState) {
-            setCities([]);
-            return;
-        }
-
-        const fetchCities = async () => {
-            setLoading(true);
-            try {
-                const response = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${selectedState}/municipios?orderBy=nome`);
-                const data = await response.json();
-                setCities(data.map((c: any) => c.nome.toUpperCase()));
-            } catch (err) {
-                console.error("Error fetching cities:", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchCities();
-    }, [selectedState]);
 
     return (
         <div className="w-full space-y-2">
             <label className="text-lg font-bold text-[#002B49] block">{label}</label>
             <select
                 {...register(name)}
-                disabled={!selectedState || loading}
+                disabled={!selectedState}
                 className={`w-full p-4 border-2 rounded-xl text-lg bg-white transition-all ${error ? 'border-red-500 bg-red-50' : 'border-gray-200 focus:border-[#CCFF00] focus:ring-2 focus:ring-[#CCFF00] focus:outline-none disabled:bg-gray-100'}`}
             >
-                <option value="">{loading ? 'Carregando cidades...' : 'Selecione a cidade...'}</option>
+                <option value="">{!selectedState ? 'Selecione o estado primeiro...' : 'Selecione a cidade...'}</option>
                 {cities.map((city) => (
                     <option key={city} value={city}>{city}</option>
                 ))}
