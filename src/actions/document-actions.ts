@@ -224,7 +224,7 @@ export async function syncProposalWithCRM(proposalId: string) {
             method: "POST",
             headers: {
                 "accept": "text/plain",
-                "X-API-KEY": "583ea0cb-1c5c-4a71-aae0-5a04af21ea4e"
+                "X-API-KEY": process.env.XAPIKEY || ""
             },
             body: formData,
         });
