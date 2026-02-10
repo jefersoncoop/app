@@ -34,6 +34,14 @@ export default function UploadManager({ proposalId, userName }: UploadManagerPro
         setUploadedDocs(prev => new Set(prev).add(id));
     };
 
+    const handleDelete = (id: string) => {
+        setUploadedDocs(prev => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+        });
+    };
+
     const handleFinalize = async () => {
         setIsFinalizing(true);
         try {
@@ -92,6 +100,7 @@ export default function UploadManager({ proposalId, userName }: UploadManagerPro
                             label={doc.label}
                             description={doc.desc}
                             onSuccess={() => handleSuccess(doc.id)}
+                            onDelete={() => handleDelete(doc.id)}
                         />
                     ))}
                 </div>
@@ -110,6 +119,7 @@ export default function UploadManager({ proposalId, userName }: UploadManagerPro
                             label={doc.label}
                             description={doc.desc}
                             onSuccess={() => handleSuccess(doc.id)}
+                            onDelete={() => handleDelete(doc.id)}
                         />
                     ))}
                 </div>

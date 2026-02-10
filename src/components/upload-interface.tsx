@@ -2,9 +2,9 @@
 
 import React, { useState } from 'react';
 import { storage } from "@/lib/firebase";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { saveDocumentMetadata } from "@/actions/document-actions";
-import { UploadCloud, CheckCircle, FileText, AlertCircle, Loader2 } from 'lucide-react';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
+import { saveDocumentMetadata, deleteDocumentMetadata } from "@/actions/document-actions";
+import { UploadCloud, CheckCircle, FileText, AlertCircle, Loader2, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface UploadZoneProps {
@@ -13,12 +13,14 @@ interface UploadZoneProps {
     label: string;
     description?: string;
     onSuccess?: () => void;
+    onDelete?: () => void;
 }
 
-export default function UploadZone({ proposalId, docType, label, description, onSuccess }: UploadZoneProps) {
-    const [status, setStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
+export default function UploadZone({ proposalId, docType, label, description, onSuccess, onDelete }: UploadZoneProps) {
+    const [status, setStatus] = useState<'idle' | 'uploading' | 'success' | 'error' | 'deleting'>('idle');
     const [progress, setProgress] = useState(0);
     const [fileName, setFileName] = useState('');
+    const [lastUploadPath, setLastUploadPath] = useState<string | null>(null);
 
     const compressImage = (file: File): Promise<Blob | File> => {
         return new Promise((resolve) => {
@@ -88,8 +90,10 @@ export default function UploadZone({ proposalId, docType, label, description, on
             console.log(`Original: ${originalFile.size} bytes, Compressed: ${file.size} bytes`);
 
             // 1. Upload to Firebase Storage
-            const storageRef = ref(storage, `uploads/${proposalId}/${docType}_${Date.now()}_${originalFile.name}`);
+            const path = `uploads/${proposalId}/${docType}_${Date.now()}_${originalFile.name}`;
+            const storageRef = ref(storage, path);
             const uploadTask = uploadBytesResumable(storageRef, file);
+            setLastUploadPath(path);
 
             uploadTask.on('state_changed',
                 (snapshot) => {
@@ -121,6 +125,33 @@ export default function UploadZone({ proposalId, docType, label, description, on
         }
     };
 
+    const handleDelete = async () => {
+        if (!confirm("Deseja realmente excluir este documento?")) return;
+
+        setStatus('deleting');
+        try {
+            // 1. Delete from Firestore first
+            const res = await deleteDocumentMetadata(proposalId, docType);
+            if (!res.success) throw new Error("Erro ao deletar metadados");
+
+            // 2. Delete from Storage if we have the path
+            if (lastUploadPath) {
+                const storageRef = ref(storage, lastUploadPath);
+                await deleteObject(storageRef);
+            }
+
+            // 3. Reset state
+            setStatus('idle');
+            setFileName('');
+            setLastUploadPath(null);
+            if (onDelete) onDelete();
+        } catch (err) {
+            console.error("Delete error:", err);
+            alert("Erro ao excluir o arquivo.");
+            setStatus('success'); // Revert to success if delete fails
+        }
+    };
+
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 transition-all hover:shadow-md">
             <div className="flex justify-between items-start mb-4">
@@ -131,6 +162,15 @@ export default function UploadZone({ proposalId, docType, label, description, on
                     </h3>
                     {description && <p className="text-gray-500 text-sm mt-1">{description}</p>}
                 </div>
+                {status === 'success' && (
+                    <button
+                        onClick={handleDelete}
+                        className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                        title="Excluir arquivo"
+                    >
+                        <Trash2 size={18} />
+                    </button>
+                )}
             </div>
 
             {status === 'idle' && (
@@ -162,6 +202,13 @@ export default function UploadZone({ proposalId, docType, label, description, on
                     <CheckCircle className="text-green-500 w-10 h-10 mb-2" />
                     <p className="text-green-800 font-bold text-sm">Arquivo recebido</p>
                     <p className="text-green-700 text-xs truncate max-w-[200px]">{fileName}</p>
+                </div>
+            )}
+
+            {status === 'deleting' && (
+                <div className="h-32 flex flex-col justify-center items-center space-y-3 bg-gray-50 rounded-xl border border-gray-100">
+                    <Loader2 className="animate-spin text-red-500" size={32} />
+                    <p className="text-xs font-bold text-red-500">Excluindo...</p>
                 </div>
             )}
 
