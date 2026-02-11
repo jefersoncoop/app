@@ -1,10 +1,10 @@
 'use client';
 
-import { getProposals, searchProposals, getProposalsByCampaign, deleteProposal } from '@/actions/proposal-actions';
+import { getProposals, searchProposals, getProposalsByCampaign, deleteProposal, getAllProposalsByCampaign } from '@/actions/proposal-actions';
 import { getCampaignsWithCounts } from '@/actions/campaign-actions';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Eye, FileText, Loader2, RefreshCw, LayoutList, Search, X, ChevronDown, ChevronUp, Trash2, SortAsc, Calendar, LinkIcon, Check } from 'lucide-react';
+import { Eye, FileText, Loader2, RefreshCw, LayoutList, Search, X, ChevronDown, ChevronUp, Trash2, SortAsc, Calendar, LinkIcon, Check, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function ProposalsPage() {
@@ -124,6 +124,63 @@ export default function ProposalsPage() {
         setCampLoading(false);
     };
 
+    const handleExportCSV = async (campaignId: string, campaignName: string) => {
+        try {
+            setCampLoading(true);
+            const data = await getAllProposalsByCampaign(campaignId);
+            if (!data || data.length === 0) {
+                alert("Nenhuma proposta encontrada para exportar.");
+                setCampLoading(false);
+                return;
+            }
+
+            // Define columns
+            const headers = [
+                "Data", "Nome Completo", "CPF", "Status", "Telefone", "Email",
+                "Cargo/Categoria", "Cidade", "Estado", "CEP", "Logradouro", "Numero", "Bairro"
+            ];
+
+            // Map rows
+            const rows = data.map((p: any) => [
+                new Date(p.createdAt).toLocaleDateString('pt-BR'),
+                p.nomeCompleto,
+                p.cpf,
+                p.status,
+                p.telefone,
+                p.email,
+                p.cargo || p.categoriaFuncao,
+                p.cidade,
+                p.estado,
+                p.cep,
+                `${p.logradouroTipo} ${p.logradouroNome}`,
+                p.numero,
+                p.bairro
+            ]);
+
+            // Combine into CSV string
+            const csvContent = [
+                headers.join(","),
+                ...rows.map((row: any[]) => row.map((val: any) => `"${String(val || "").replace(/"/g, '""')}"`).join(","))
+            ].join("\n");
+
+            // Create download link
+            const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `propostas_${campaignName.toLowerCase().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            console.error("Export error:", error);
+            alert("Erro ao exportar CSV.");
+        } finally {
+            setCampLoading(false);
+        }
+    };
+
     return (
         <div className="space-y-8">
             <div className="flex justify-between items-center">
@@ -221,24 +278,33 @@ export default function ProposalsPage() {
                                     >
                                         <div className="p-6 bg-white border-t space-y-4">
                                             {/* Sorting Controls */}
-                                            <div className="flex justify-end gap-2 mb-2">
+                                            <div className="flex flex-col sm:flex-row justify-end gap-2 mb-2">
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={() => handleSortChange('createdAt')}
+                                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${sortBy === 'createdAt'
+                                                            ? 'bg-[#002B49] text-white border-[#002B49]'
+                                                            : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                                                            }`}
+                                                    >
+                                                        <Calendar size={14} /> POR DATA
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleSortChange('nomeCompleto')}
+                                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${sortBy === 'nomeCompleto'
+                                                            ? 'bg-[#002B49] text-white border-[#002B49]'
+                                                            : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                                                            }`}
+                                                    >
+                                                        <SortAsc size={14} /> A-Z
+                                                    </button>
+                                                </div>
                                                 <button
-                                                    onClick={() => handleSortChange('createdAt')}
-                                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${sortBy === 'createdAt'
-                                                        ? 'bg-[#002B49] text-white border-[#002B49]'
-                                                        : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
-                                                        }`}
+                                                    onClick={() => handleExportCSV(camp.id, camp.name)}
+                                                    disabled={campLoading}
+                                                    className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border bg-green-50 text-green-700 border-green-200 hover:bg-green-100 disabled:opacity-50"
                                                 >
-                                                    <Calendar size={14} /> POR DATA
-                                                </button>
-                                                <button
-                                                    onClick={() => handleSortChange('nomeCompleto')}
-                                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${sortBy === 'nomeCompleto'
-                                                        ? 'bg-[#002B49] text-white border-[#002B49]'
-                                                        : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
-                                                        }`}
-                                                >
-                                                    <SortAsc size={14} /> A-Z
+                                                    <Download size={14} /> EXPORTAR CSV
                                                 </button>
                                             </div>
 

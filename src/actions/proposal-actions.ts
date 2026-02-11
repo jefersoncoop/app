@@ -163,6 +163,28 @@ export async function getProposalsByCampaign(campaignId: string, limitCount: num
         return [];
     }
 }
+
+export async function getAllProposalsByCampaign(campaignId: string) {
+    try {
+        const db = getAdminDb();
+        let query: any = db.collection('proposals');
+
+        if (campaignId === 'uncategorized') {
+            query = query.where('campaignId', 'in', ['uncategorized', null]);
+        } else {
+            query = query.where('campaignId', '==', campaignId);
+        }
+
+        // Always sort by date for the export
+        query = query.orderBy('createdAt', 'desc');
+
+        const snapshot = await query.get();
+        return snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+    } catch (e) {
+        console.error("Error fetching all proposals for export:", e);
+        return [];
+    }
+}
 export async function deleteProposal(proposalId: string) {
     try {
         const db = getAdminDb();
