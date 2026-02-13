@@ -2,6 +2,7 @@
 
 import { getAdminDb } from "@/lib/firebase-admin";
 import citiesData from "@/data/ibge-cities.json";
+import sharp from 'sharp';
 
 export async function saveDocumentMetadata(proposalId: string, url: string, filename: string, type: string) {
     try {
@@ -59,6 +60,23 @@ async function performSyncWithCRM(proposalId: string) {
         const codMunic = await getIBGECode(proposalData.estado, proposalData.cidade);
         const formData = new FormData();
 
+        // Fetch dynamic clientId from Campaign if available
+        let finalClientId = proposalData.clientId || "";
+        if (proposalData.campaignId && proposalData.campaignId !== 'uncategorized') {
+            try {
+                const campDoc = await db.collection("campaigns").doc(proposalData.campaignId).get();
+                if (campDoc.exists) {
+                    const campData = campDoc.data();
+                    if (campData?.clientId) {
+                        finalClientId = campData.clientId;
+                        console.log(`Using clientId from Campaign: ${finalClientId}`);
+                    }
+                }
+            } catch (e) {
+                console.error("Error fetching campaign for clientId:", e);
+            }
+        }
+
         formData.append("Name", proposalData.nomeCompleto || "");
         formData.append("Identification", proposalData.cpf?.replace(/\D/g, '') || "");
         formData.append("Email", proposalData.email || "nao_coletado@gmail.com");
@@ -67,7 +85,7 @@ async function performSyncWithCRM(proposalId: string) {
         formData.append("Gender", mapGender(proposalData.sexo || ""));
         formData.append("MaritalStatus", mapMaritalStatus(proposalData.estadoCivil || ""));
         formData.append("RaceColor", proposalData.corRaca || "Branca");
-        formData.append("Nationality", proposalData.nacionalidade?.toUpperCase() || "BRASILEIRA");
+        formData.append("Nationality", "BRASILEIRO");
         formData.append("BirthDate", proposalData.dataNascimento ? proposalData.dataNascimento.split('/').reverse().join('-') + "T00:00:00.000Z" : new Date().toISOString());
         formData.append("BirthCity", proposalData.naturalidadeMunicipio || "nao coletado");
         formData.append("BirthState", proposalData.naturalidadeEstado || "nao coletado");
@@ -87,9 +105,9 @@ async function performSyncWithCRM(proposalId: string) {
         formData.append("Address.Complement", proposalData.complemento || "nao coletado");
 
         const isBrazilian = (proposalData.nacionalidade || "").toUpperCase() === "BRASILEIRO";
-        formData.append("Address.CountryResid", isBrazilian ? "" : "BRASIL");
+        formData.append("Address.CountryResid", "");
 
-        formData.append("Documents.RG", proposalData.rg || "nao coletado");
+        formData.append("Documents.RG", proposalData.rg || "");
         formData.append("Documents.rgIssuer", proposalData.orgaoExpedidor || "SSP");
         formData.append("Documents.rgState", proposalData.estadoExpedidor || proposalData.estado || "");
         formData.append("Documents.rgCreatedTime", new Date().toISOString());
@@ -106,7 +124,9 @@ async function performSyncWithCRM(proposalId: string) {
         formData.append("BankAccount.Account", proposalData.conta || "00000");
         formData.append("BankAccount.Digit", proposalData.contaDigito || "0");
 
-        formData.append("ContractId", proposalData.clientId || "");
+        if (finalClientId && finalClientId !== "0" && finalClientId !== "00") {
+            formData.append("ContractId", finalClientId);
+        }
         formData.append("AdmissionDate", new Date().toISOString());
         formData.append("CotaParte", "10");
         formData.append("IsAdmPublic", "false");
@@ -126,9 +146,38 @@ async function performSyncWithCRM(proposalId: string) {
         for (const doc of documents) {
             const crmField = fileMapping[doc.type as string];
             if (crmField && doc.url) {
-                const blob = await downloadFileAsBlob(doc.url);
+                let blob = await downloadFileAsBlob(doc.url);
                 if (blob) {
-                    const filename = doc.filename || `document_${doc.type}.${blob.type.split('/')[1] || 'pdf'}`;
+                    const docType = (doc.type as string).toLowerCase();
+                    const isHeic = doc.filename?.toLowerCase().endsWith('.heic') || blob.type === 'image/heic';
+
+                    // Convert images (including HEIC) to JPG
+                    if (blob.type.startsWith('image/') || isHeic) {
+                        try {
+                            const buffer = Buffer.from(await blob.arrayBuffer());
+                            const compressedBuffer = await sharp(buffer)
+                                .resize({ width: 1280, withoutEnlargement: true })
+                                .jpeg({ quality: 75, mozjpeg: true })
+                                .toBuffer();
+
+                            console.log(`Converted/Compressed ${doc.type}: ${blob.size} -> ${compressedBuffer.length}`);
+                            blob = new Blob([new Uint8Array(compressedBuffer)], { type: 'image/jpeg' });
+                        } catch (sharpError) {
+                            console.error(`Error processing image ${doc.type}:`, sharpError);
+                            // Fallback to original blob if sharp fails (e.g. unsupported format)
+                        }
+                    }
+
+                    let extension = blob.type.split('/')[1] || 'pdf';
+                    if (extension === 'jpeg') extension = 'jpg';
+
+                    let filename = doc.filename || `document_${doc.type}.${extension}`;
+                    // Force .jpg extension for all images for CRM compatibility
+                    if (blob.type === 'image/jpeg' || filename.toLowerCase().endsWith('.heic') || filename.toLowerCase().endsWith('.jpeg')) {
+                        const baseName = filename.split('.').slice(0, -1).join('.');
+                        filename = `${baseName || 'document'}.jpg`;
+                    }
+
                     formData.append(crmField, blob, filename);
                 }
             }
@@ -140,6 +189,16 @@ async function performSyncWithCRM(proposalId: string) {
                 formData.append(field, new Blob([]), "vazio_obrigatorio.pdf");
             }
         }
+
+        // DEBUG: Logging payload (keys and total size)
+        const payloadKeys = Array.from((formData as any).keys());
+        let totalSize = 0;
+        for (const value of (formData as any).values()) {
+            if (value instanceof Blob) totalSize += value.size;
+            else if (typeof value === 'string') totalSize += value.length;
+        }
+        console.log("CRM Sync Payload Keys:", payloadKeys);
+        console.log(`CRM Sync Total Appx Size: ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
 
         const crmResponse = await fetch("https://core.coopedu.app.br/api/GuestCooperativeUser/external-create", {
             method: "POST",
@@ -153,8 +212,23 @@ async function performSyncWithCRM(proposalId: string) {
         if (!crmResponse.ok) {
             const txt = await crmResponse.text();
             console.error(`CRM Sync Error (${crmResponse.status}):`, txt);
+
+            // If it's a 400 or 500, the body might contain JSON with details
+            try {
+                const json = JSON.parse(txt);
+                console.error("CRM Error Details (JSON):", json);
+            } catch (e) {
+                // ignore if not json
+            }
+
             return { success: false, message: `Erro no CRM (${crmResponse.status}): ${txt}` };
         } else {
+            // SUCCESS: Mark as synchronized and completed in Firestore
+            await docRef.update({
+                status: "completed",
+                crmSynced: true,
+                crmSyncedAt: new Date().toISOString()
+            });
             return { success: true, message: "Sincronizado com sucesso" };
         }
     } catch (error) {
@@ -165,6 +239,51 @@ async function performSyncWithCRM(proposalId: string) {
 
 export async function syncProposalWithCRM(proposalId: string) {
     return await performSyncWithCRM(proposalId);
+}
+
+export async function batchSyncProposalsWithCRM(campaignId: string) {
+    try {
+        const db = getAdminDb();
+        const snapshot = await db.collection("proposals")
+            .where("campaignId", "==", campaignId)
+            .get();
+
+        if (snapshot.empty) return { success: false, message: "Nenhuma proposta encontrada para esta campanha." };
+
+        let successCount = 0;
+        let failCount = 0;
+        const errors = [];
+
+        for (const doc of snapshot.docs) {
+            const data = doc.data();
+            // Skip already synced unless forced (we keep it simple for now: skip completed)
+            if (data.status === "completed" || data.crmSynced) {
+                continue;
+            }
+
+            // Small delay to avoid hitting CRM rate limits too hard if any
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            const res = await performSyncWithCRM(doc.id);
+            if (res.success) {
+                successCount++;
+            } else {
+                failCount++;
+                errors.push({ id: doc.id, name: data.nomeCompleto || "Sem Nome", error: res.message });
+            }
+        }
+
+        return {
+            success: true,
+            message: `Sincronização em lote finalizada.`,
+            successCount,
+            failCount,
+            errors
+        };
+    } catch (error) {
+        console.error("Batch CRM Sync Failed:", error);
+        return { success: false, message: error instanceof Error ? error.message : "Erro desconhecido" };
+    }
 }
 
 export async function finalizeUploads(proposalId: string) {

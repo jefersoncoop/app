@@ -2,6 +2,7 @@
 
 import { getProposals, searchProposals, getProposalsByCampaign, deleteProposal, getAllProposalsByCampaign } from '@/actions/proposal-actions';
 import { getCampaignsWithCounts } from '@/actions/campaign-actions';
+import { batchSyncProposalsWithCRM } from '@/actions/document-actions';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Eye, FileText, Loader2, RefreshCw, LayoutList, Search, X, ChevronDown, ChevronUp, Trash2, SortAsc, Calendar, LinkIcon, Check, Download } from 'lucide-react';
@@ -21,6 +22,7 @@ export default function ProposalsPage() {
     const [sortBy, setSortBy] = useState<'createdAt' | 'nomeCompleto'>('createdAt');
     const [page, setPage] = useState(1);
     const [markers, setMarkers] = useState<string[]>([]);
+    const [isBatchSyncing, setIsBatchSyncing] = useState<string | null>(null);
     const PAGE_SIZE = 50;
 
     const fetchCampaigns = async () => {
@@ -181,6 +183,32 @@ export default function ProposalsPage() {
         }
     };
 
+    const handleBatchSync = async (campaignId: string) => {
+        if (!confirm("Isso enviará todas as propostas pendentes desta campanha para o CRM. Deseja continuar?")) return;
+
+        setIsBatchSyncing(campaignId);
+        try {
+            const result = await batchSyncProposalsWithCRM(campaignId);
+            if (result.success) {
+                const fails = result.failCount || 0;
+                alert(result.message + (fails > 0 ? `\n${fails} falha(s). Verifique os logs.` : ""));
+            } else {
+                alert(result.message || "Erro ao processar lote.");
+            }
+
+            // Refresh counts and current view
+            await fetchCampaigns();
+            if (expandedCampaignId === campaignId) {
+                await fetchProposalsForCampaign(campaignId);
+            }
+        } catch (error) {
+            console.error("Error in handleBatchSync:", error);
+            alert("Ocorreu um erro ao processar o lote.");
+        } finally {
+            setIsBatchSyncing(null);
+        }
+    };
+
     return (
         <div className="space-y-8">
             <div className="flex justify-between items-center">
@@ -299,6 +327,14 @@ export default function ProposalsPage() {
                                                         <SortAsc size={14} /> A-Z
                                                     </button>
                                                 </div>
+                                                <button
+                                                    onClick={() => handleBatchSync(camp.id)}
+                                                    disabled={isBatchSyncing === camp.id}
+                                                    className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 disabled:opacity-50"
+                                                >
+                                                    {isBatchSyncing === camp.id ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                                                    SINCRONIZAR CRM
+                                                </button>
                                                 <button
                                                     onClick={() => handleExportCSV(camp.id, camp.name)}
                                                     disabled={campLoading}
