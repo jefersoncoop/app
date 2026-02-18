@@ -130,7 +130,7 @@ export async function resendInitialNotification(proposalId: string) {
     }
 }
 
-export async function getProposalsByCampaign(campaignId: string, limitCount: number = 50, lastId?: string, sortBy: 'createdAt' | 'nomeCompleto' = 'createdAt') {
+export async function getProposalsByCampaign(campaignId: string, limitCount: number = 50, lastId?: string, sortBy: 'createdAt' | 'nomeCompleto' = 'createdAt', status?: string) {
     try {
         const db = getAdminDb();
         let query: any = db.collection('proposals');
@@ -139,6 +139,10 @@ export async function getProposalsByCampaign(campaignId: string, limitCount: num
             query = query.where('campaignId', 'in', ['uncategorized', null]);
         } else {
             query = query.where('campaignId', '==', campaignId);
+        }
+
+        if (status && status !== 'all') {
+            query = query.where('status', '==', status);
         }
 
         const orderDir = sortBy === 'createdAt' ? 'desc' : 'asc';
@@ -164,7 +168,7 @@ export async function getProposalsByCampaign(campaignId: string, limitCount: num
     }
 }
 
-export async function getAllProposalsByCampaign(campaignId: string) {
+export async function getAllProposalsByCampaign(campaignId: string, status?: string) {
     try {
         const db = getAdminDb();
         let query: any = db.collection('proposals');
@@ -173,6 +177,10 @@ export async function getAllProposalsByCampaign(campaignId: string) {
             query = query.where('campaignId', 'in', ['uncategorized', null]);
         } else {
             query = query.where('campaignId', '==', campaignId);
+        }
+
+        if (status && status !== 'all') {
+            query = query.where('status', '==', status);
         }
 
         // Always sort by date for the export

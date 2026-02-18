@@ -3,6 +3,7 @@
 import { getAdminDb } from "@/lib/firebase-admin";
 import citiesData from "@/data/ibge-cities.json";
 import sharp from 'sharp';
+import convert from 'heic-convert';
 
 export async function saveDocumentMetadata(proposalId: string, url: string, filename: string, type: string) {
     try {
@@ -154,7 +155,25 @@ async function performSyncWithCRM(proposalId: string) {
                     // Convert images (including HEIC) to JPG
                     if (blob.type.startsWith('image/') || isHeic) {
                         try {
-                            const buffer = Buffer.from(await blob.arrayBuffer());
+                            let buffer = Buffer.from(await blob.arrayBuffer());
+
+                            // If HEIC, convert to JPG buffer first using heic-convert
+                            if (isHeic) {
+                                try {
+                                    console.log(`HEIC detected for ${doc.type}, converting with heic-convert first...`);
+                                    const inputBuffer = buffer; // Use the buffer already created
+                                    const outputBuffer = await convert({
+                                        buffer: inputBuffer,
+                                        format: 'JPEG',
+                                        quality: 1
+                                    });
+                                    buffer = Buffer.from(outputBuffer);
+                                } catch (heicError) {
+                                    console.error(`heic-convert error for ${doc.type}:`, heicError);
+                                    // continue to sharp, maybe it works or fails gracefully
+                                }
+                            }
+
                             const compressedBuffer = await sharp(buffer)
                                 .resize({ width: 1280, withoutEnlargement: true })
                                 .jpeg({ quality: 75, mozjpeg: true })
@@ -164,7 +183,7 @@ async function performSyncWithCRM(proposalId: string) {
                             blob = new Blob([new Uint8Array(compressedBuffer)], { type: 'image/jpeg' });
                         } catch (sharpError) {
                             console.error(`Error processing image ${doc.type}:`, sharpError);
-                            // Fallback to original blob if sharp fails (e.g. unsupported format)
+                            // Fallback to original blob if sharp fails
                         }
                     }
 

@@ -20,6 +20,7 @@ export default function ProposalsPage() {
     const [campaignProposals, setCampaignProposals] = useState<any[]>([]);
     const [campLoading, setCampLoading] = useState(false);
     const [sortBy, setSortBy] = useState<'createdAt' | 'nomeCompleto'>('createdAt');
+    const [filterStatus, setFilterStatus] = useState<string>('all');
     const [page, setPage] = useState(1);
     const [markers, setMarkers] = useState<string[]>([]);
     const [isBatchSyncing, setIsBatchSyncing] = useState<string | null>(null);
@@ -36,9 +37,9 @@ export default function ProposalsPage() {
         fetchCampaigns();
     }, []);
 
-    const fetchProposalsForCampaign = async (campaignId: string, marker?: string, currentSort = sortBy) => {
+    const fetchProposalsForCampaign = async (campaignId: string, marker?: string, currentSort = sortBy, currentStatus = filterStatus) => {
         setCampLoading(true);
-        const propsRes = await getProposalsByCampaign(campaignId, PAGE_SIZE, marker, currentSort);
+        const propsRes = await getProposalsByCampaign(campaignId, PAGE_SIZE, marker, currentSort, currentStatus);
         setCampaignProposals(propsRes);
         setCampLoading(false);
     };
@@ -63,7 +64,15 @@ export default function ProposalsPage() {
         setSortBy(newSort);
         setPage(1);
         setMarkers([]);
-        fetchProposalsForCampaign(expandedCampaignId, undefined, newSort);
+        fetchProposalsForCampaign(expandedCampaignId, undefined, newSort, filterStatus);
+    };
+
+    const handleStatusChange = (newStatus: string) => {
+        if (!expandedCampaignId || newStatus === filterStatus) return;
+        setFilterStatus(newStatus);
+        setPage(1);
+        setMarkers([]);
+        fetchProposalsForCampaign(expandedCampaignId, undefined, sortBy, newStatus);
     };
 
     const handleNextPage = () => {
@@ -71,7 +80,7 @@ export default function ProposalsPage() {
         const lastId = campaignProposals[campaignProposals.length - 1].id;
         setMarkers([...markers, lastId]);
         setPage(page + 1);
-        fetchProposalsForCampaign(expandedCampaignId, lastId);
+        fetchProposalsForCampaign(expandedCampaignId, lastId, sortBy, filterStatus);
     };
 
     const handlePrevPage = () => {
@@ -81,7 +90,7 @@ export default function ProposalsPage() {
         const prevMarker = newMarkers.length > 0 ? newMarkers[newMarkers.length - 1] : undefined;
         setMarkers(newMarkers);
         setPage(page - 1);
-        fetchProposalsForCampaign(expandedCampaignId, prevMarker);
+        fetchProposalsForCampaign(expandedCampaignId, prevMarker, sortBy, filterStatus);
     };
 
     const handleSearch = async (e?: React.FormEvent) => {
@@ -129,7 +138,7 @@ export default function ProposalsPage() {
     const handleExportCSV = async (campaignId: string, campaignName: string) => {
         try {
             setCampLoading(true);
-            const data = await getAllProposalsByCampaign(campaignId);
+            const data = await getAllProposalsByCampaign(campaignId, filterStatus);
             if (!data || data.length === 0) {
                 alert("Nenhuma proposta encontrada para exportar.");
                 setCampLoading(false);
@@ -306,42 +315,64 @@ export default function ProposalsPage() {
                                     >
                                         <div className="p-6 bg-white border-t space-y-4">
                                             {/* Sorting Controls */}
-                                            <div className="flex flex-col sm:flex-row justify-end gap-2 mb-2">
+                                            <div className="flex flex-col sm:flex-row justify-between items-end gap-4 mb-2">
+                                                <div className="flex flex-wrap gap-4 items-center">
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="text-[10px] font-bold text-gray-400 uppercase ml-1">Ordenar por</span>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={() => handleSortChange('createdAt')}
+                                                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${sortBy === 'createdAt'
+                                                                    ? 'bg-[#002B49] text-white border-[#002B49]'
+                                                                    : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                                                                    }`}
+                                                            >
+                                                                <Calendar size={14} /> DATA
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleSortChange('nomeCompleto')}
+                                                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${sortBy === 'nomeCompleto'
+                                                                    ? 'bg-[#002B49] text-white border-[#002B49]'
+                                                                    : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                                                                    }`}
+                                                            >
+                                                                <SortAsc size={14} /> NOME
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="text-[10px] font-bold text-gray-400 uppercase ml-1">Filtrar por Status</span>
+                                                        <select
+                                                            value={filterStatus}
+                                                            onChange={(e) => handleStatusChange(e.target.value)}
+                                                            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-200 bg-white text-[#002B49] focus:outline-none focus:ring-2 focus:ring-[#002B49]"
+                                                        >
+                                                            <option value="all">TODOS OS STATUS</option>
+                                                            <option value="pending_documents">PENDENTE DOCS</option>
+                                                            <option value="documents_received">DOCS RECEBIDOS</option>
+                                                            <option value="completed">CONCLUÍDA (CRM)</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+
                                                 <div className="flex gap-2">
                                                     <button
-                                                        onClick={() => handleSortChange('createdAt')}
-                                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${sortBy === 'createdAt'
-                                                            ? 'bg-[#002B49] text-white border-[#002B49]'
-                                                            : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
-                                                            }`}
+                                                        onClick={() => handleBatchSync(camp.id)}
+                                                        disabled={isBatchSyncing === camp.id}
+                                                        className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 disabled:opacity-50"
                                                     >
-                                                        <Calendar size={14} /> POR DATA
+                                                        {isBatchSyncing === camp.id ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                                                        SINCRONIZAR CRM
                                                     </button>
                                                     <button
-                                                        onClick={() => handleSortChange('nomeCompleto')}
-                                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${sortBy === 'nomeCompleto'
-                                                            ? 'bg-[#002B49] text-white border-[#002B49]'
-                                                            : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
-                                                            }`}
+                                                        onClick={() => handleExportCSV(camp.id, camp.name)}
+                                                        disabled={campLoading}
+                                                        className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border bg-green-50 text-green-700 border-green-200 hover:bg-green-100 disabled:opacity-50"
                                                     >
-                                                        <SortAsc size={14} /> A-Z
+                                                        <Download size={14} /> EXPORTAR CSV
                                                     </button>
                                                 </div>
-                                                <button
-                                                    onClick={() => handleBatchSync(camp.id)}
-                                                    disabled={isBatchSyncing === camp.id}
-                                                    className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 disabled:opacity-50"
-                                                >
-                                                    {isBatchSyncing === camp.id ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                                                    SINCRONIZAR CRM
-                                                </button>
-                                                <button
-                                                    onClick={() => handleExportCSV(camp.id, camp.name)}
-                                                    disabled={campLoading}
-                                                    className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border bg-green-50 text-green-700 border-green-200 hover:bg-green-100 disabled:opacity-50"
-                                                >
-                                                    <Download size={14} /> EXPORTAR CSV
-                                                </button>
                                             </div>
 
                                             {campLoading ? (
