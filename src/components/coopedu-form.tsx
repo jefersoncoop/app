@@ -41,7 +41,15 @@ const formatters: Record<string, (v: string) => string> = {
             .replace(/(\d{5})\.(\d{2})(\d)/, '$1.$2-$3');
     },
     date: (v) => {
-        const d = v.replace(/\D/g, '').slice(0, 8);
+        let d = v.replace(/\D/g, '').slice(0, 8);
+        if (d.length >= 2) {
+            const day = parseInt(d.slice(0, 2));
+            if (day > 31) d = '31' + d.slice(2);
+        }
+        if (d.length >= 4) {
+            const month = parseInt(d.slice(2, 4));
+            if (month > 12) d = d.slice(0, 2) + '12' + d.slice(4);
+        }
         return d.replace(/(\d{2})(\d)/, '$1/$2')
             .replace(/(\d{2})(\d)/, '$1/$2');
     },
@@ -371,7 +379,7 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                     <div className="space-y-4">
                                         <InputField name="dataNascimento" label="Data de Nascimento" placeholder="DD/MM/AAAA" mask="date" />
                                         <SelectField name="sexo" label="Sexo" options={['Masculino', 'Feminino', 'Outro']} />
-                                        <SelectField name="corRaca" label="Cor/Raça" options={['Branca', 'Preta', 'Parda', 'Amarela', 'Indígena']} />
+                                        <SelectField name="corRaca" label="Cor/Raça" options={['Branca', 'Preta', 'Parda', 'Amarela', 'Indigena']} />
                                         <SelectField name="estadoCivil" label="Estado Civil" options={['Solteiro(a)', 'Casado(a)', 'Divorciado(a)', 'Viúvo(a)', 'União Estável']} />
                                         <SelectField name="nacionalidade" label="Nacionalidade" options={['Brasileira', 'Estrangeira']} />
                                         <div className="grid grid-cols-2 gap-4">

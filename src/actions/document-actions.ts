@@ -87,7 +87,15 @@ async function performSyncWithCRM(proposalId: string) {
         formData.append("MaritalStatus", mapMaritalStatus(proposalData.estadoCivil || ""));
         formData.append("RaceColor", proposalData.corRaca || "Branca");
         formData.append("Nationality", "BRASILEIRO");
-        formData.append("BirthDate", proposalData.dataNascimento ? proposalData.dataNascimento.split('/').reverse().join('-') + "T00:00:00.000Z" : new Date().toISOString());
+        const birthDateRaw = proposalData.dataNascimento || "";
+        let birthDateFormatted = new Date().toISOString();
+        if (birthDateRaw.includes('/')) {
+            const parts = birthDateRaw.split('/');
+            if (parts.length === 3) {
+                birthDateFormatted = `${parts[2]}-${parts[1]}-${parts[0]}T12:00:00.000Z`;
+            }
+        }
+        formData.append("BirthDate", birthDateFormatted);
         formData.append("BirthCity", proposalData.naturalidadeMunicipio || "nao coletado");
         formData.append("BirthState", proposalData.naturalidadeEstado || "nao coletado");
         formData.append("MotherName", proposalData.nomeMae || "nao coletado");

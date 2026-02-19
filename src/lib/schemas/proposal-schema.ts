@@ -19,6 +19,22 @@ function validateCPF(cpf: string): boolean {
     return true;
 }
 
+function validateDate(dateStr: string): boolean {
+    const regex = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+    const match = dateStr.match(regex);
+    if (!match) return false;
+
+    const day = parseInt(match[1]);
+    const month = parseInt(match[2]);
+    const year = parseInt(match[3]);
+
+    if (month < 1 || month > 12) return false;
+    if (year < 1900 || year > new Date().getFullYear()) return false;
+
+    const date = new Date(year, month - 1, day);
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+}
+
 export const proposalSchema = z.object({
     // Pessoais
     cpf: z.string().min(14, "CPF obrigatório").refine(validateCPF, "CPF inválido"),
@@ -28,7 +44,7 @@ export const proposalSchema = z.object({
     orgaoExpedidor: z.string().optional().or(z.literal('')),
     nomeMae: z.string().min(5, "Nome da mãe obrigatório").max(70),
     pis: z.string().min(14, "PIS/NIT deve conter 11 dígitos"),
-    dataNascimento: z.string().length(10, "Data inválida (DD/MM/AAAA)"),
+    dataNascimento: z.string().min(10, "Data inválida (DD/MM/AAAA)").refine(validateDate, "Data de nascimento inválida"),
     sexo: z.string().min(1, "Selecione"),
     corRaca: z.string().min(1, "Selecione"),
     estadoCivil: z.string().min(1, "Selecione"),
