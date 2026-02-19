@@ -92,7 +92,8 @@ async function performSyncWithCRM(proposalId: string) {
         if (birthDateRaw.includes('/')) {
             const parts = birthDateRaw.split('/');
             if (parts.length === 3) {
-                birthDateFormatted = `${parts[2]}-${parts[1]}-${parts[0]}T12:00:00.000Z`;
+                // Return strictly YYYY-MM-DD for the CRM
+                birthDateFormatted = `${parts[2]}-${parts[1]}-${parts[0]}`;
             }
         }
         formData.append("BirthDate", birthDateFormatted);
@@ -113,8 +114,8 @@ async function performSyncWithCRM(proposalId: string) {
         formData.append("Address.TpLograd", proposalData.logradouroTipo || "Rua");
         formData.append("Address.Complement", proposalData.complemento || "nao coletado");
 
-        const isBrazilian = (proposalData.nacionalidade || "").toUpperCase() === "BRASILEIRO";
-        formData.append("Address.CountryResid", "");
+        const isBrazilian = ["BRASILEIRA", "BRASILEIRO"].includes((proposalData.nacionalidade || "").toUpperCase());
+        formData.append("Address.CountryResid", isBrazilian ? "105" : "");
 
         formData.append("Documents.RG", proposalData.rg || "");
         formData.append("Documents.rgIssuer", proposalData.orgaoExpedidor || "SSP");
@@ -171,7 +172,8 @@ async function performSyncWithCRM(proposalId: string) {
                                     console.log(`HEIC detected for ${doc.type}, converting with heic-convert first...`);
                                     const inputBuffer = buffer; // Use the buffer already created
                                     const outputBuffer = await convert({
-                                        buffer: inputBuffer,
+
+                                        buffer: inputBuffer.buffer.slice(inputBuffer.byteOffset, inputBuffer.byteOffset + inputBuffer.byteLength),
                                         format: 'JPEG',
                                         quality: 1
                                     });
