@@ -115,7 +115,7 @@ async function performSyncWithCRM(proposalId: string) {
         formData.append("Address.Complement", proposalData.complemento || "nao coletado");
 
         const isBrazilian = ["BRASILEIRA", "BRASILEIRO"].includes((proposalData.nacionalidade || "").toUpperCase());
-        formData.append("Address.CountryResid", isBrazilian ? "105" : "");
+        formData.append("Address.CountryResid", "");
 
         formData.append("Documents.RG", proposalData.rg || "");
         formData.append("Documents.rgIssuer", proposalData.orgaoExpedidor || "SSP");
