@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import UploadZone from './upload-interface';
 import { finalizeUploads } from '@/actions/document-actions';
-import { CheckCircle, Send, Loader2 } from 'lucide-react';
+import { CheckCircle, Send, Loader2, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface UploadManagerProps {
@@ -17,10 +17,10 @@ export default function UploadManager({ proposalId, userName }: UploadManagerPro
     const [isFinished, setIsFinished] = useState(false);
 
     const REQUIRED_DOCS = [
-        { id: 'identidade_frente', label: 'Documento de Identidade com CPF', desc: 'Frente do documento' },
-        { id: 'identidade_verso', label: 'Documento de Identidade com CPF/Verso', desc: 'Verso do documento' },
-        { id: 'comprovante_pis', label: 'Comprovante do número PIS/PASEP/NIT', desc: 'Extrato ou print do app' },
-        { id: 'comprovante_residencia', label: 'Comprovante de Residência', desc: 'Conta de luz, água ou telefone recente' },
+        { id: 'identidade_frente', label: 'Documento de Identidade com CPF *', desc: 'Frente do documento' },
+        { id: 'identidade_verso', label: 'Documento de Identidade com CPF/Verso *', desc: 'Verso do documento' },
+        { id: 'comprovante_pis', label: 'Comprovante do número PIS/PASEP/NIT *', desc: 'Extrato ou print do app' },
+        { id: 'comprovante_residencia', label: 'Comprovante de Residência *', desc: 'Conta de luz, água ou telefone recente' },
     ];
 
     const OPTIONAL_DOCS = [
@@ -88,9 +88,20 @@ export default function UploadManager({ proposalId, userName }: UploadManagerPro
     return (
         <div className="space-y-10">
             <section className="space-y-4">
-                <h3 className="text-xl font-black text-[#002B49] border-b-2 border-[#CCFF00] pb-2 uppercase italic tracking-tighter">
-                    Bloco Obrigatórios
-                </h3>
+                <div className="flex items-center justify-between border-b-2 border-[#CCFF00] pb-2">
+                    <h3 className="text-xl font-black text-[#002B49] uppercase italic tracking-tighter">
+                        Bloco Obrigatórios
+                    </h3>
+                    <span className="bg-[#CCFF00] text-[#002B49] px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest animate-pulse">
+                        Obrigatório
+                    </span>
+                </div>
+                <div className="bg-yellow-50 p-4 rounded-xl border-l-4 border-yellow-400 text-yellow-800 text-sm">
+                    <p className="font-bold flex items-center gap-2">
+                        <AlertCircle size={18} /> Atenção
+                    </p>
+                    <p>O envio de todos os documentos marcados com asterisco (*) é indispensável para prosseguir com a sua proposta.</p>
+                </div>
                 <div className="space-y-4">
                     {REQUIRED_DOCS.map((doc) => (
                         <UploadZone

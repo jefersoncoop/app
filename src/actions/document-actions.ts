@@ -141,7 +141,6 @@ async function performSyncWithCRM(proposalId: string) {
         formData.append("CotaParte", "10");
         formData.append("IsAdmPublic", "false");
         formData.append("ProductivitySelection", "nao coletado");
-
         const fileMapping: Record<string, string> = {
             "identidade_frente": "Files.DocIdentidadeCpfLink",
             "identidade_verso": "Files.DocIdentidadeCpfLinkBack",
