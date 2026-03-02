@@ -35,6 +35,7 @@ export async function submitProposal(data: ProposalFormData): Promise<SubmitResu
             uploadTokenExpires,
             createdAt: new Date().toISOString(),
             status: "pending_documents",
+            FLG_CADASTRO_SITE: null
         });
 
         console.log(`Proposal created. ID: ${docRef.id}`);
