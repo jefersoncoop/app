@@ -148,7 +148,7 @@ export default function ProposalsPage() {
             // Define columns
             const headers = [
                 "Data", "Nome Completo", "CPF", "Status", "Telefone", "Email",
-                "Cargo/Categoria", "Cidade", "Estado", "CEP", "Logradouro", "Numero", "Bairro"
+                "Cargo/Categoria", "Cidade", "Estado", "CEP", "Logradouro", "Numero", "Bairro", "tamanhoCamisa"
             ];
 
             // Map rows
@@ -165,7 +165,8 @@ export default function ProposalsPage() {
                 p.cep,
                 `${p.logradouroTipo} ${p.logradouroNome}`,
                 p.numero,
-                p.bairro
+                p.bairro,
+                p.tamanhoCamisa
             ]);
 
             // Combine into CSV string
