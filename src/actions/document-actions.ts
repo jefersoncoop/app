@@ -334,7 +334,8 @@ export async function finalizeUploads(proposalId: string) {
         const formattedPhone = phoneDigits.startsWith('55') && phoneDigits.length > 11 ? phoneDigits : `55${phoneDigits}`;
         const payload = { nome: nomeCompleto, numero: formattedPhone };
 
-        // Handle notification
+        // Handle notification - disabled as requested
+        /*
         notifyFinalExternalService(payload).then(async result => {
             await docRef.collection("notifications").add({
                 type: "final",
@@ -344,6 +345,7 @@ export async function finalizeUploads(proposalId: string) {
                 payload
             });
         }).catch(e => console.error("Notification trigger error:", e));
+        */
 
         // Handle CRM Sync
         performSyncWithCRM(proposalId).catch(e => console.error("Async CRM sync error:", e));
