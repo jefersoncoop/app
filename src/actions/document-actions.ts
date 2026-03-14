@@ -81,8 +81,8 @@ async function performSyncWithCRM(proposalId: string) {
         formData.append("Name", proposalData.nomeCompleto || "");
         formData.append("Identification", proposalData.cpf?.replace(/\D/g, '') || "");
         formData.append("Email", proposalData.email || "nao_coletado@gmail.com");
-        formData.append("Telephone", formattedPhone);
-        formData.append("CellPhone", formattedPhone);
+        formData.append("Telephone", phoneDigits);
+        formData.append("CellPhone", phoneDigits);
         formData.append("Gender", mapGender(proposalData.sexo || ""));
         formData.append("MaritalStatus", mapMaritalStatus(proposalData.estadoCivil || ""));
         formData.append("RaceColor", proposalData.corRaca || "Branca");

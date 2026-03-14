@@ -9,7 +9,29 @@ export type SubmitResult = {
     message?: string;
     id?: string;
     errors?: any;
+    existingProposal?: any;
+    uploadToken?: string;
 };
+
+export async function checkExistingProposalByCPF(cpf: string): Promise<SubmitResult> {
+    try {
+        const db = getAdminDb();
+        const snapshot = await db.collection("proposals").where("cpf", "==", cpf).limit(1).get();
+
+        if (!snapshot.empty) {
+            const doc = snapshot.docs[0];
+            return {
+                success: true,
+                existingProposal: { id: doc.id, ...doc.data() }
+            };
+        }
+
+        return { success: false };
+    } catch (error) {
+        console.error("Error checking existing CPF:", error);
+        return { success: false, message: "Erro ao verificar CPF." };
+    }
+}
 
 export async function submitProposal(data: ProposalFormData): Promise<SubmitResult> {
     try {
@@ -63,10 +85,45 @@ export async function submitProposal(data: ProposalFormData): Promise<SubmitResu
             payload: { nome: authorizedData.nomeCompleto, link: `/${uploadToken}`, numero: formattedPhone }
         });
 
-        return { success: true, id: docRef.id };
+        return { success: true, id: docRef.id, uploadToken };
     } catch (error) {
         console.error("Error submitting proposal:", error);
         return { success: false, message: "Erro ao salvar a proposta. Tente novamente mais tarde." };
+    }
+}
+
+export async function updateProposal(proposalId: string, data: ProposalFormData): Promise<SubmitResult> {
+    try {
+        // 1. Validate data on the server
+        const parsed = proposalSchema.safeParse(data);
+        if (!parsed.success) {
+            console.error("Validation error:", parsed.error.format());
+            return { success: false, message: "Dados inválidos.", errors: parsed.error.format() };
+        }
+
+        const authorizedData = parsed.data;
+
+        // 2. Save to Firestore
+        const db = getAdminDb();
+        const docRef = db.collection("proposals").doc(proposalId);
+        
+        let uploadToken: string | undefined;
+        const existingDoc = await docRef.get();
+        if (existingDoc.exists) {
+            uploadToken = existingDoc.data()?.uploadToken;
+        }
+
+        await docRef.update({
+            ...authorizedData,
+            updatedAt: new Date().toISOString()
+        });
+
+        console.log(`Proposal updated. ID: ${proposalId}`);
+
+        return { success: true, id: proposalId, uploadToken };
+    } catch (error) {
+        console.error("Error updating proposal:", error);
+        return { success: false, message: "Erro ao atualizar a proposta. Tente novamente mais tarde." };
     }
 }
 

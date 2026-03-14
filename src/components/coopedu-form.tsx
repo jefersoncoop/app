@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, CheckCircle, Info, ShieldCheck } from 'lucide-react';
 import { proposalSchema, ProposalFormData } from '@/lib/schemas/proposal-schema';
-import { submitProposal } from '@/actions/proposal-actions';
+import { submitProposal, checkExistingProposalByCPF, updateProposal } from '@/actions/proposal-actions';
 import statesCitiesData from '@/data/ibge-states-cities.json';
 
 // --- COMPONENTES AUXILIARES DE UI ---
@@ -157,7 +157,10 @@ const CitySelectField = ({ name, label, stateFieldName }: { name: string, label:
 export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
     const [step, setStep] = useState(0);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isCheckingCPF, setIsCheckingCPF] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
+    const [existingProposal, setExistingProposal] = useState<any>(null);
+    const [uploadToken, setUploadToken] = useState<string | null>(null);
 
     const methods = useForm<ProposalFormData>({
         resolver: zodResolver(proposalSchema),
@@ -200,6 +203,24 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
             // Trigger validation for specific fields
             const isValid = await methods.trigger(currentStepConfig.fields as any);
             if (!isValid) return;
+
+            // CPF Check
+            if (currentStepConfig.id === 'cpf' && !existingProposal) {
+                const cpfValue = methods.getValues('cpf');
+                setIsCheckingCPF(true);
+                setSubmitError(null);
+                try {
+                    const checkResult = await checkExistingProposalByCPF(cpfValue);
+                    if (checkResult.success && checkResult.existingProposal) {
+                        setExistingProposal(checkResult.existingProposal);
+                        setIsCheckingCPF(false);
+                        return; // Stop here, UI will show options
+                    }
+                } catch (e) {
+                    console.error("Error checking CPF", e);
+                }
+                setIsCheckingCPF(false);
+            }
         }
 
         setStep(s => s + 1);
@@ -223,9 +244,17 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                 functionId: campaign?.functionId
             };
 
-            const result = await submitProposal(payload as any);
+            let result;
+            if (existingProposal && existingProposal.id) {
+                result = await updateProposal(existingProposal.id, payload as any);
+            } else {
+                result = await submitProposal(payload as any);
+            }
 
             if (result.success) {
+                if (result.uploadToken) {
+                    setUploadToken(result.uploadToken);
+                }
                 setStep(steps.length - 1); // Jump to success step
             } else {
                 setSubmitError(result.message || "Erro ao enviar.");
@@ -340,10 +369,42 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                 {/* TELA: CPF (5%) */}
                                 {step === 3 && (
                                     <div className="space-y-6">
-                                        <InputField name="cpf" label="Informe seu CPF" placeholder="000.000.000-00" mask="cpf" />
-                                        <p className="text-sm text-gray-500 italic">Usaremos este dado para validar seu registro na base nacional.</p>
-                                        <InputField name="pis" label="PIS/NIT" placeholder="000.00000.00-0" mask="pis" />
-                                        <p className="text-sm text-gray-500 italic">Atenção! A numeração pode estar na Carteira de Trabalho ou no App do Meu INSS.</p>
+                                        {existingProposal ? (
+                                            <div className="bg-yellow-50 p-6 rounded-2xl border-l-8 border-yellow-500 space-y-4">
+                                                <h2 className="text-xl font-bold text-yellow-800">Cadastro já existente</h2>
+                                                <p className="text-gray-700">Identificamos que você já possui uma proposta cadastrada com este CPF.</p>
+
+                                                <div className="space-y-3 pt-4">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            methods.reset({ ...methods.getValues(), ...existingProposal });
+                                                            setStep(4);
+                                                        }}
+                                                        className="w-full bg-[#002B49] text-white py-3 rounded-xl font-bold hover:bg-[#001f35] transition-colors"
+                                                    >
+                                                        MODIFICAR MEUS DADOS
+                                                    </button>
+
+                                                    {existingProposal.status === 'pending_documents' && existingProposal.uploadToken && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => window.location.href = `/upload/${existingProposal.uploadToken}`}
+                                                            className="w-full bg-white border-2 border-[#002B49] text-[#002B49] py-3 rounded-xl font-bold hover:bg-gray-50 transition-colors"
+                                                        >
+                                                            ENVIAR DOCUMENTAÇÃO PENDENTE
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <InputField name="cpf" label="Informe seu CPF" placeholder="000.000.000-00" mask="cpf" />
+                                                <p className="text-sm text-gray-500 italic">Usaremos este dado para validar seu registro na base nacional.</p>
+                                                <InputField name="pis" label="PIS/NIT" placeholder="000.00000.00-0" mask="pis" />
+                                                <p className="text-sm text-gray-500 italic">Atenção! A numeração pode estar na Carteira de Trabalho ou no App do Meu INSS.</p>
+                                            </>
+                                        )}
                                     </div>
                                 )}
 
@@ -579,7 +640,18 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                             <p className="text-green-800 font-bold">Verifique seu WhatsApp</p>
                                             <p className="text-green-700 text-sm">Enviamos um link exclusivo para você anexar seus documentos.</p>
                                         </div>
-                                        <button type="button" onClick={() => window.location.reload()} className="bg-[#002B49] text-white px-8 py-3 rounded-full font-bold mt-4">
+
+                                        {/*uploadToken && (
+                                            <button
+                                                type="button"
+                                                onClick={() => window.location.href = `/upload/${uploadToken}`}
+                                                className="bg-[#CCFF00] text-[#002B49] w-full py-4 rounded-xl font-bold hover:bg-[#b3e600] transition-colors mt-6 shadow-md"
+                                            >
+                                                ENVIAR DOCUMENTAÇÃO AGORA
+                                            </button>
+                                        )*/}
+
+                                        <button type="button" onClick={() => window.location.reload()} className="bg-transparent border-2 border-[#002B49] text-[#002B49] px-8 py-3 rounded-full font-bold mt-4 hover:bg-gray-50 transition-colors">
                                             Novo Cadastro
                                         </button>
                                     </div>
@@ -600,8 +672,8 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                         {isSubmitting ? 'ENVIANDO...' : 'FINALIZAR'} <CheckCircle size={20} />
                                     </button>
                                 ) : (
-                                    <button type="button" onClick={handleNext} className="bg-[#002B49] text-white px-10 py-4 rounded-full font-black flex items-center gap-2 shadow-xl hover:bg-[#001f35] transition-colors">
-                                        PRÓXIMO <ChevronRight size={20} />
+                                    <button type="button" onClick={handleNext} disabled={isCheckingCPF} className="bg-[#002B49] text-white px-10 py-4 rounded-full font-black flex items-center gap-2 shadow-xl hover:bg-[#001f35] transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                        {isCheckingCPF ? 'VERIFICANDO...' : 'PRÓXIMO'} <ChevronRight size={20} />
                                     </button>
                                 )}
                             </div>
