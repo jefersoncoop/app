@@ -20,7 +20,7 @@ async function getProposalByToken(token: string) {
     const doc = snapshot.docs[0];
     const data = doc.data() as any;
 
-    const proposal = { id: doc.id, ...data } as { id: string, nomeCompleto: string, expired?: boolean, uploadTokenExpires?: string };
+    const proposal = { id: doc.id, ...data } as { id: string, nomeCompleto: string, expired?: boolean, uploadTokenExpires?: string, status?: string, crmSynced?: boolean };
 
     // Check expiration
     if (proposal.uploadTokenExpires) {
@@ -50,6 +50,20 @@ export default async function UploadPage(props: Params) {
                     </div>
                     <h1 className="text-2xl font-bold text-gray-800">Link Expirado</h1>
                     <p className="text-gray-600">Este link de envio de documentos não é mais válido. Entre em contato com a equipe de atendimento.</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (proposal.status === 'completed' || proposal.crmSynced) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+                <div className="text-center space-y-4 max-w-md">
+                    <div className="bg-green-100 p-6 rounded-full inline-block">
+                        <PackageOpen size={48} className="text-green-500" />
+                    </div>
+                    <h1 className="text-2xl font-bold text-gray-800">Documentos já Enviados!</h1>
+                    <p className="text-gray-600">Recebemos seus documentos e já os sincronizamos com sucesso.<br/>Não é necessário reenviá-los novamente. Agradecemos a sua cooperação!</p>
                 </div>
             </div>
         );
