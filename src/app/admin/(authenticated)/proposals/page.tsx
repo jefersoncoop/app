@@ -234,7 +234,7 @@ export default function ProposalsPage() {
                             placeholder="Buscar por Nome ou CPF..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-10 py-2 border rounded-xl focus:ring-2 focus:ring-[#002B49] focus:outline-none text-sm"
+                            className="w-full pl-10 pr-10 py-2 border rounded-xl focus:ring-2 focus:ring-[#002B49] focus:outline-none text-sm text-[#002B49]"
                         />
                         {searchTerm && (
                             <button

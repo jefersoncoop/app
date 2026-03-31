@@ -158,7 +158,7 @@ async function performSyncWithCRM(proposalId: string) {
                 let blob = await downloadFileAsBlob(doc.url);
                 if (blob) {
                     const docType = (doc.type as string).toLowerCase();
-                    const isHeic = doc.filename?.toLowerCase().endsWith('.heic') || blob.type === 'image/heic';
+                    const isHeic = doc.filename?.toLowerCase().endsWith('.heic', '.heif') || blob.type === 'image/heic';
 
                     // Convert images (including HEIC) to JPG
                     if (blob.type.startsWith('image/') || isHeic) {
@@ -184,8 +184,8 @@ async function performSyncWithCRM(proposalId: string) {
                             }
 
                             const compressedBuffer = await sharp(buffer)
-                                .resize({ width: 1280, withoutEnlargement: true })
-                                .jpeg({ quality: 75, mozjpeg: true })
+                                .resize({ width: 1000, withoutEnlargement: true })
+                                .jpeg({ quality: 60, mozjpeg: true })
                                 .toBuffer();
 
                             console.log(`Converted/Compressed ${doc.type}: ${blob.size} -> ${compressedBuffer.length}`);
@@ -221,12 +221,27 @@ async function performSyncWithCRM(proposalId: string) {
         // DEBUG: Logging payload (keys and total size)
         const payloadKeys = Array.from((formData as any).keys());
         let totalSize = 0;
-        for (const value of (formData as any).values()) {
-            if (value instanceof Blob) totalSize += value.size;
-            else if (typeof value === 'string') totalSize += value.length;
+        for (const [key, value] of (formData as any).entries()) {
+            if (value instanceof Blob) {
+                totalSize += value.size;
+                console.log(`Document [${key}]: ${(value.size / 1024).toFixed(1)} KB`);
+            } else if (typeof value === 'string') {
+                totalSize += value.length;
+            }
         }
+        
+        const totalMB = totalSize / 1024 / 1024;
         console.log("CRM Sync Payload Keys:", payloadKeys);
-        console.log(`CRM Sync Total Appx Size: ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
+        console.log(`CRM Sync Total Appx Size: ${totalMB.toFixed(2)} MB`);
+
+        // Safety check to avoid CRM failure (30MB limit)
+        if (totalMB > 29) {
+            console.error(`CRITICAL: Payload too large for CRM (${totalMB.toFixed(2)} MB)`);
+            return { 
+                success: false, 
+                message: `Os arquivos combinados são muito grandes (${totalMB.toFixed(2)} MB). O limite é 30MB. Por favor, tente reduzir o tamanho dos PDFs.` 
+            };
+        }
 
         const crmResponse = await fetch("https://core.coopedu.app.br/api/GuestCooperativeUser/external-create", {
             method: "POST",

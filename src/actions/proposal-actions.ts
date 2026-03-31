@@ -46,8 +46,8 @@ export async function submitProposal(data: ProposalFormData): Promise<SubmitResu
 
         // 2. Generate System Metadata
         const uploadToken = randomUUID();
-        // Expires in 7 days (generous window for association)
-        const uploadTokenExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        // Expires in 30 days (generous window for association)
+        const uploadTokenExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
         // 3. Save to Firestore
         const db = getAdminDb();

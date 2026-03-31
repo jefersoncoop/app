@@ -38,7 +38,7 @@ export default function UploadZone({ proposalId, docType, label, description, on
                     const canvas = document.createElement('canvas');
                     let width = img.width;
                     let height = img.height;
-                    const MAX_SIZE = 1280;
+                    const MAX_SIZE = 1000;
 
                     if (width > height) {
                         if (width > MAX_SIZE) {
@@ -67,7 +67,7 @@ export default function UploadZone({ proposalId, docType, label, description, on
                             }
                         },
                         'image/jpeg',
-                        0.7
+                        0.5
                     );
                 };
                 img.onerror = () => resolve(file);
