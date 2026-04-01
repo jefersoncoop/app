@@ -16,6 +16,7 @@ export const campaignSchema = z.object({
         return val;
     }).pipe(z.array(z.string()).min(1, "Adicione pelo menos uma profissão")),
     active: z.boolean().default(true),
+    formType: z.enum(['coopedu', 'coopera']).default('coopedu'),
 });
 
 export type CampaignFormValues = z.input<typeof campaignSchema>;

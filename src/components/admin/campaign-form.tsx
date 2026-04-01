@@ -76,6 +76,15 @@ export default function CampaignForm({ campaign }: { campaign?: any }) {
                             <span className="font-bold text-gray-700">Campanha Ativa</span>
                         </label>
                     </div>
+
+                    <div className="col-span-2">
+                        <label className="block font-bold text-gray-700 mb-2">Modelo do Formulário</label>
+                        <select {...register('formType')} className="w-full p-3 border rounded-lg bg-white">
+                            <option value="coopedu">COOPEDU (Multi-passos Padrão)</option>
+                            <option value="coopera">COOPERA (Mediadores Betim/MG)</option>
+                        </select>
+                        {errors.formType && <p className="text-red-500 text-sm">{errors.formType.message as string}</p>}
+                    </div>
                 </div>
 
                 <div>

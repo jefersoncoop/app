@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getCampaignBySlug } from '@/actions/campaign-actions';
 import CoopeduFormMaster from '@/components/coopedu-form';
+import CooperaFormMaster from '@/components/coopera-form';
 
 interface Params {
     params: Promise<{ slug: string }>;
@@ -14,8 +15,11 @@ export default async function CampaignPage(props: Params) {
 
     return (
         <main className="min-h-screen bg-gray-50 flex flex-col justify-center">
-            {/* Pass campaign data to the client form */}
-            <CoopeduFormMaster campaign={campaign} />
+            {campaign.formType === 'coopera' ? (
+                <CooperaFormMaster campaign={campaign} />
+            ) : (
+                <CoopeduFormMaster campaign={campaign} />
+            )}
         </main>
     );
 }
