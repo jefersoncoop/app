@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Cooperação Digital",
-  description: "Cooperação Digital",
+  title: "COOPEDU",
+  description: "COOPEDU",
 };
 
 export default function RootLayout({
