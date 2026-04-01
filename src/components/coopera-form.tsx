@@ -166,7 +166,7 @@ export default function CooperaFormMaster({ campaign }: { campaign?: any }) {
         { id: 'contato', progress: 50, fields: ['telefone', 'email'] },
         { id: 'profissional', progress: 60, fields: ['escolaridade', 'categoriaFuncao'] },
         { id: 'logistica', progress: 70, fields: ['tamanhoCamisa'] },
-        { id: 'criterios', progress: 85, fields: ['criterioFormacao', 'criterioLocalidade', 'criterioExperiencia', 'criterioDisponibilidade'] },
+        { id: 'criterios', progress: 85, fields: ['criterioFormacao', 'criterioCapacitacao', 'criterioExperiencia', 'criterioDisponibilidade'] },
         { id: 'termos', progress: 90, fields: ['aceiteConcordancia'] },
         { id: 'lgpd', progress: 95, fields: ['aceiteLGPD'] },
         { id: 'success', progress: 100 }
@@ -307,7 +307,6 @@ export default function CooperaFormMaster({ campaign }: { campaign?: any }) {
                                             <p className="text-gray-700 leading-relaxed">
                                                 Destacamos que as informações do formulário estão nos termos da Lei Geral de Proteção de Dados (Lei nº 13.709/18); e que serão tratados com as finalidades específicas, prevista nas bases legais da respectiva lei.
                                                 <br /><br />
-                                                <strong>Atenção!</strong> O preenchimento do formulário e envio da documentação não garantem ao participante vaga ou contratação imediata.
                                             </p>
                                         </div>
                                         <button type="button" onClick={handleNext} className="w-full bg-[#002B49] text-white py-4 rounded-xl font-bold hover:bg-[#001f35] transition-colors">COMEÇAR</button>
@@ -414,49 +413,40 @@ export default function CooperaFormMaster({ campaign }: { campaign?: any }) {
 
                                 {step === 10 && (
                                     <div className="space-y-8">
-                                        <h2 className="text-2xl font-bold text-[#002B49]">Critérios de Escolha para Produção</h2>
+                                        <h2 className="text-2xl font-bold text-[#002B49]">ANÁLISE PEDAGÓGICA E COMPORTAMENTAL</h2>
 
                                         <div className="space-y-4">
                                             <label className="block text-lg font-bold text-[#002B49]">
                                                 CRITÉRIO AVALIADO: FORMAÇÃO <br />
-                                                <span className="text-base font-normal text-gray-700">Você possuí formação específica para a vaga?</span>
+                                                <span className="text-base font-normal text-gray-700">Você possuí formação em pedagogia ou áreas afins?</span>
                                             </label>
                                             <div className="flex gap-6">
                                                 <label className="flex items-center gap-2 cursor-pointer"><input type="radio" {...methods.register("criterioFormacao")} value="Sim" className="w-5 h-5 accent-[#002B49]" /> <span className="text-lg">Sim</span></label>
                                                 <label className="flex items-center gap-2 cursor-pointer"><input type="radio" {...methods.register("criterioFormacao")} value="Não" className="w-5 h-5 accent-[#002B49]" /> <span className="text-lg">Não</span></label>
+                                                <label className="flex items-center gap-2 cursor-pointer"><input type="radio" {...methods.register("criterioFormacao")} value="Outros" className="w-5 h-5 accent-[#002B49]" /> <span className="text-lg">Outros</span></label>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <label className="block text-lg font-bold text-[#002B49]">
+                                                CRITÉRIO AVALIADO: CAPACITAÇÃO <br />
+                                                <span className="text-base font-normal text-gray-700">Você já participou de algum tipo de formação ou capacitação continuada sobre educação especial ou inclusiva?
+                                                </span>
+                                            </label>
+                                            <div className="flex gap-6">
+                                                <label className="flex items-center gap-2 cursor-pointer"><input type="radio" {...methods.register("criterioDisponibilidade")} value="Sim" className="w-5 h-5 accent-[#002B49]" /> <span className="text-lg">Sim</span></label>
+                                                <label className="flex items-center gap-2 cursor-pointer"><input type="radio" {...methods.register("criterioDisponibilidade")} value="Não" className="w-5 h-5 accent-[#002B49]" /> <span className="text-lg">Não</span></label>
                                             </div>
                                         </div>
 
                                         <div className="space-y-4">
                                             <label className="block text-lg font-bold text-[#002B49]">
                                                 CRITÉRIO AVALIADO: EXPERIÊNCIA <br />
-                                                <span className="text-base font-normal text-gray-700">Você possui experiência para vaga a qual está se candidatando?</span>
+                                                <span className="text-base font-normal text-gray-700">Nos últimos anos, você trabalha ou já trabalhou com estudantes com necessidades especiais ou específicas? </span>
                                             </label>
                                             <div className="flex gap-6">
                                                 <label className="flex items-center gap-2 cursor-pointer"><input type="radio" {...methods.register("criterioExperiencia")} value="Sim" className="w-5 h-5 accent-[#002B49]" /> <span className="text-lg">Sim</span></label>
                                                 <label className="flex items-center gap-2 cursor-pointer"><input type="radio" {...methods.register("criterioExperiencia")} value="Não" className="w-5 h-5 accent-[#002B49]" /> <span className="text-lg">Não</span></label>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-4">
-                                            <label className="block text-lg font-bold text-[#002B49]">
-                                                CRITÉRIO AVALIADO: LOCALIDADE <br />
-                                                <span className="text-base font-normal text-gray-700">Você mora próximo a alguma escola do seu município?</span>
-                                            </label>
-                                            <div className="flex gap-6">
-                                                <label className="flex items-center gap-2 cursor-pointer"><input type="radio" {...methods.register("criterioLocalidade")} value="Sim" className="w-5 h-5 accent-[#002B49]" /> <span className="text-lg">Sim</span></label>
-                                                <label className="flex items-center gap-2 cursor-pointer"><input type="radio" {...methods.register("criterioLocalidade")} value="Não" className="w-5 h-5 accent-[#002B49]" /> <span className="text-lg">Não</span></label>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-4">
-                                            <label className="block text-lg font-bold text-[#002B49]">
-                                                CRITÉRIO AVALIADO: DISPONIBILIDADE <br />
-                                                <span className="text-base font-normal text-gray-700">Você tem disponibilidade imediata para prestar o seu serviço na função em que se candidatou?</span>
-                                            </label>
-                                            <div className="flex gap-6">
-                                                <label className="flex items-center gap-2 cursor-pointer"><input type="radio" {...methods.register("criterioDisponibilidade")} value="Sim" className="w-5 h-5 accent-[#002B49]" /> <span className="text-lg">Sim</span></label>
-                                                <label className="flex items-center gap-2 cursor-pointer"><input type="radio" {...methods.register("criterioDisponibilidade")} value="Não" className="w-5 h-5 accent-[#002B49]" /> <span className="text-lg">Não</span></label>
                                             </div>
                                         </div>
                                     </div>
