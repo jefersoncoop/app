@@ -109,6 +109,13 @@ export default function CampaignForm({ campaign }: { campaign?: any }) {
                         <input {...register('functionId')} className="w-full p-3 border rounded-lg" placeholder="67890" />
                         {errors.functionId && <p className="text-red-500 text-sm">{errors.functionId.message as string}</p>}
                     </div>
+
+                    <div className="col-span-2 flex items-center pt-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" {...register('syncCRM')} className="w-5 h-5 accent-[#002B49]" />
+                            <span className="font-bold text-gray-700">Sincronizar Automaticamente com CRM</span>
+                        </label>
+                    </div>
                 </div>
             </div>
 

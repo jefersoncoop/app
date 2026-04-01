@@ -243,6 +243,34 @@ async function performSyncWithCRM(proposalId: string) {
             };
         }
 
+        // Check if sync is enabled for this campaign
+        let syncEnabled = true;
+        if (proposalData.campaignId && proposalData.campaignId !== 'uncategorized') {
+            try {
+                const campDoc = await db.collection("campaigns").doc(proposalData.campaignId).get();
+                if (campDoc.exists) {
+                    const campData = campDoc.data();
+                    if (campData?.syncCRM === false) {
+                        syncEnabled = false;
+                        console.log(`CRM Sync DISABLED for campaign: ${proposalData.campaignId}`);
+                    }
+                }
+            } catch (e) {
+                console.error("Error checking syncCRM status:", e);
+            }
+        }
+
+        if (!syncEnabled) {
+            // Mark as completed but skip external call
+            await docRef.update({
+                status: "completed",
+                crmSynced: false, // Explicitly false as it was skipped
+                crmSyncedAt: null,
+                completedAt: new Date().toISOString()
+            });
+            return { success: true, message: "Envio concluído (Sincronização manual selecionada)" };
+        }
+
         const crmResponse = await fetch("https://core.coopedu.app.br/api/GuestCooperativeUser/external-create", {
             method: "POST",
             headers: {

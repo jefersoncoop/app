@@ -3,6 +3,7 @@
 import { getAdminDb } from "@/lib/firebase-admin";
 import { proposalSchema, ProposalFormData } from "@/lib/schemas/proposal-schema";
 import { randomUUID } from 'crypto';
+import { getCampaignById } from "./campaign-actions";
 
 export type SubmitResult = {
     success: boolean;
@@ -70,11 +71,32 @@ export async function submitProposal(data: ProposalFormData): Promise<SubmitResu
             ? phoneDigits
             : `55${phoneDigits}`;
 
-        const notificationResult = await notifyExternalService({
-            nome: authorizedData.nomeCompleto,
-            link: `/${uploadToken}`,
-            numero: formattedPhone
-        });
+        // Fetch campaign to check sync settings and form model
+        let syncCRM = true;
+        let endpoint = "https://webatende.coopedu.com.br:3000/api/external/status_proposta";
+
+        if (authorizedData.campaignId && authorizedData.campaignId !== 'uncategorized') {
+            const campaign = await getCampaignById(authorizedData.campaignId);
+            if (campaign) {
+                syncCRM = campaign.syncCRM !== false; // Default true if field missing or true
+                if (campaign.formType === 'coopera') {
+                    endpoint = "https://webatende.coopedu.com.br:3000/api/external/enviodocs";
+                }
+            }
+        }
+
+        let notificationResult: { success: boolean; message?: string } = { 
+            success: true, 
+            message: "Sincronização desativada para esta campanha" 
+        };
+
+        if (syncCRM) {
+            notificationResult = await notifyExternalService(endpoint, {
+                nome: authorizedData.nomeCompleto,
+                link: `/${uploadToken}`,
+                numero: formattedPhone
+            });
+        }
 
         // Log notification in Firestore
         await docRef.collection("notifications").add({
@@ -85,7 +107,7 @@ export async function submitProposal(data: ProposalFormData): Promise<SubmitResu
             payload: { nome: authorizedData.nomeCompleto, link: `/${uploadToken}`, numero: formattedPhone }
         });
 
-        return { success: true, id: docRef.id, uploadToken };
+        return { success: true, id: docRef.id, uploadToken, message: "Proposta enviada com sucesso." };
     } catch (error) {
         console.error("Error submitting proposal:", error);
         return { success: false, message: "Erro ao salvar a proposta. Tente novamente mais tarde." };
@@ -127,10 +149,10 @@ export async function updateProposal(proposalId: string, data: ProposalFormData)
     }
 }
 
-async function notifyExternalService(payload: { nome: string, link: string, numero: string }) {
+async function notifyExternalService(url: string, payload: { nome: string, link: string, numero: string }) {
     try {
-        console.log("Notifying external service:", payload);
-        const response = await fetch("https://webatende.coopedu.com.br:3000/api/external/status_proposta", {
+        console.log(`Notifying external service at ${url}:`, payload);
+        const response = await fetch(url, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -171,7 +193,23 @@ export async function resendInitialNotification(proposalId: string) {
             numero: formattedPhone
         };
 
-        const result = await notifyExternalService(payload);
+        // Fetch campaign for resend as well to respect settings
+        let syncCRM = true;
+        let endpoint = "https://webatende.coopedu.com.br:3000/api/external/status_proposta";
+
+        if (data.campaignId && data.campaignId !== 'uncategorized') {
+            const campaign = await getCampaignById(data.campaignId);
+            if (campaign) {
+                syncCRM = campaign.syncCRM !== false;
+                if (campaign.formType === 'coopera') {
+                    endpoint = "https://webatende.coopedu.com.br:3000/api/external/enviodocs";
+                }
+            }
+        }
+
+        if (!syncCRM) return { success: false, message: "Sincronização desativada para esta campanha" };
+
+        const result = await notifyExternalService(endpoint, payload);
 
         await docRef.collection("notifications").add({
             type: "initial",

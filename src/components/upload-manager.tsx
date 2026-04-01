@@ -9,9 +9,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 interface UploadManagerProps {
     proposalId: string;
     userName: string;
+    formType?: string;
 }
 
-export default function UploadManager({ proposalId, userName }: UploadManagerProps) {
+export default function UploadManager({ proposalId, userName, formType = 'coopedu' }: UploadManagerProps) {
     const [uploadedDocs, setUploadedDocs] = useState<Set<string>>(new Set());
     const [isFinalizing, setIsFinalizing] = useState(false);
     const [isFinished, setIsFinished] = useState(false);
@@ -57,19 +58,23 @@ export default function UploadManager({ proposalId, userName }: UploadManagerPro
     };
 
     if (isFinished) {
+        const isCoopera = formType === 'coopera';
         return (
             <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="bg-white p-12 rounded-3xl shadow-xl text-center space-y-6 border border-lime-100"
+                className={`bg-white p-12 rounded-3xl shadow-xl text-center space-y-6 border ${isCoopera ? 'border-blue-100' : 'border-lime-100'}`}
             >
-                <div className="bg-lime-100 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <CheckCircle className="text-lime-600" size={48} />
+                <div className={`${isCoopera ? 'bg-blue-100' : 'bg-lime-100'} w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6`}>
+                    <CheckCircle className={isCoopera ? 'text-blue-600' : 'text-lime-600'} size={48} />
                 </div>
-                <h2 className="text-3xl font-black text-[#002B49]">Envio Concluído!</h2>
+                <h2 className="text-3xl font-black text-[#002B49] uppercase">Envio Concluído!</h2>
                 <p className="text-gray-600 text-lg">
                     Obrigado, <span className="font-bold">{userName}</span>. <br />
-                    Recebemos seus documentos com sucesso. Nossa equipe irá analisar e entraremos em contato em breve.
+                    {isCoopera 
+                        ? "Recebemos seus documentos com sucesso. Sua inscrição para mediador pedagógico será analisada e entraremos em contato em breve."
+                        : "Recebemos seus documentos com sucesso. Nossa equipe irá analisar e entraremos em contato em breve."
+                    }
                 </p>
                 <div className="pt-6">
                     <button
@@ -117,24 +122,26 @@ export default function UploadManager({ proposalId, userName }: UploadManagerPro
                 </div>
             </section>
 
-            <section className="space-y-4">
-                <h3 className="text-xl font-black text-gray-400 border-b-2 border-gray-100 pb-2 uppercase italic tracking-tighter">
-                    Bloco Opcional
-                </h3>
-                <div className="space-y-4">
-                    {OPTIONAL_DOCS.map((doc) => (
-                        <UploadZone
-                            key={doc.id}
-                            proposalId={proposalId}
-                            docType={doc.id}
-                            label={doc.label}
-                            description={doc.desc}
-                            onSuccess={() => handleSuccess(doc.id)}
-                            onDelete={() => handleDelete(doc.id)}
-                        />
-                    ))}
-                </div>
-            </section>
+            {formType !== 'coopera' && (
+                <section className="space-y-4">
+                    <h3 className="text-xl font-black text-gray-400 border-b-2 border-gray-100 pb-2 uppercase italic tracking-tighter">
+                        Bloco Opcional
+                    </h3>
+                    <div className="space-y-4">
+                        {OPTIONAL_DOCS.map((doc) => (
+                            <UploadZone
+                                key={doc.id}
+                                proposalId={proposalId}
+                                docType={doc.id}
+                                label={doc.label}
+                                description={doc.desc}
+                                onSuccess={() => handleSuccess(doc.id)}
+                                onDelete={() => handleDelete(doc.id)}
+                            />
+                        ))}
+                    </div>
+                </section>
+            )}
 
             <AnimatePresence>
                 {allRequiredUploaded && (
@@ -147,8 +154,8 @@ export default function UploadManager({ proposalId, userName }: UploadManagerPro
                         <button
                             onClick={handleFinalize}
                             disabled={isFinalizing}
-                            className={`w-full py-5 rounded-2xl font-black text-xl flex items-center justify-center gap-3 transition-all shadow-lg ${isFinalizing ? 'bg-gray-400' : 'bg-[#CCFF00] text-[#002B49] hover:bg-[#b8e600] active:scale-95'
-                                }`}
+                            className={`w-full py-5 rounded-2xl font-black text-xl flex items-center justify-center gap-3 transition-all shadow-lg ${isFinalizing ? 'bg-gray-400' : (formType === 'coopera' ? 'bg-[#002B49] text-white hover:bg-[#001f35]' : 'bg-[#CCFF00] text-[#002B49] hover:bg-[#b8e600]')
+                                } active:scale-95`}
                         >
                             {isFinalizing ? (
                                 <Loader2 className="animate-spin" size={24} />

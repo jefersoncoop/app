@@ -20,7 +20,7 @@ async function getProposalByToken(token: string) {
     const doc = snapshot.docs[0];
     const data = doc.data() as any;
 
-    const proposal = { id: doc.id, ...data } as { id: string, nomeCompleto: string, expired?: boolean, uploadTokenExpires?: string, status?: string, crmSynced?: boolean };
+    const proposal = { id: doc.id, ...data } as { id: string, nomeCompleto: string, expired?: boolean, uploadTokenExpires?: string, status?: string, crmSynced?: boolean, campaignId?: string };
 
     // Check expiration
     if (proposal.uploadTokenExpires) {
@@ -37,8 +37,21 @@ export default async function UploadPage(props: Params) {
     const params = await props.params;
     const proposal = await getProposalByToken(params.token);
 
-    if (!proposal) {
-        return notFound();
+    if (!proposal) return notFound();
+
+    // Fetch Campaign to know the formType
+    let formType = 'coopedu';
+    let campaignName = 'COOPERAÇÃO DIGITAL';
+    if (proposal.campaignId && proposal.campaignId !== 'uncategorized') {
+        const db = getAdminDb();
+        const campDoc = await db.collection("campaigns").doc(proposal.campaignId).get();
+        if (campDoc.exists) {
+            const campData = campDoc.data();
+            formType = campData?.formType || 'coopedu';
+            if (formType === 'coopera') {
+                campaignName = 'FORMULÁRIO DIGITAL';
+            }
+        }
     }
 
     if (proposal.expired) {
@@ -63,18 +76,20 @@ export default async function UploadPage(props: Params) {
                         <PackageOpen size={48} className="text-green-500" />
                     </div>
                     <h1 className="text-2xl font-bold text-gray-800">Documentos já Enviados!</h1>
-                    <p className="text-gray-600">Recebemos seus documentos e já os sincronizamos com sucesso.<br/>Não é necessário reenviá-los novamente. Agradecemos a sua cooperação!</p>
+                    <p className="text-gray-600">Recebemos seus documentos e já os sincronizamos com sucesso.<br />Não é necessário reenviá-los novamente. Agradecemos a sua cooperação!</p>
                 </div>
             </div>
         );
     }
 
+    const isCoopera = formType === 'coopera';
+
     return (
-        <div className="min-h-screen bg-[#F0F4F8] font-sans pb-20">
+        <div className={`min-h-screen ${isCoopera ? 'bg-blue-50' : 'bg-[#F0F4F8]'} font-sans pb-20`}>
             {/* Header */}
-            <div className="bg-[#002B49] text-white p-6 pb-24 shadow-lg">
+            <div className={`${isCoopera ? 'bg-[#002B49]' : 'bg-[#002B49]'} text-white p-6 pb-24 shadow-lg`}>
                 <div className="max-w-2xl mx-auto">
-                    <p className="text-[#CCFF00] font-bold text-sm tracking-wider mb-2">COOPERAÇÃO DIGITAL</p>
+                    <p className={`${isCoopera ? 'text-blue-400' : 'text-[#CCFF00]'} font-bold text-sm tracking-wider mb-2 uppercase`}>{campaignName}</p>
                     <h1 className="text-3xl font-bold">Envio de Documentos</h1>
                     <p className="text-gray-300 mt-2">Olá, <span className="text-white font-bold">{proposal.nomeCompleto}</span>. Precisamos dos documentos abaixo para finalizar seu cadastro.</p>
                 </div>
@@ -82,13 +97,16 @@ export default async function UploadPage(props: Params) {
 
             {/* Content */}
             <div className="max-w-2xl mx-auto px-6 -mt-16 space-y-6">
-                <UploadManager proposalId={proposal.id} userName={proposal.nomeCompleto} />
+                <UploadManager
+                    proposalId={proposal.id}
+                    userName={proposal.nomeCompleto}
+                    formType={formType}
+                />
 
                 <div className="p-6 text-center text-gray-500 text-sm">
                     <p>Seus dados estão seguros conosco.</p>
                     <p className="text-xs mt-1">Ao enviar, você confirma a veracidade dos documentos.</p>
                 </div>
-
             </div>
         </div>
     );
