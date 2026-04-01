@@ -341,7 +341,7 @@ export default function CooperaFormMaster({ campaign }: { campaign?: any }) {
                                     <div className="space-y-6">
                                         <InputField name="nomeCompleto" label="Seu nome completo" placeholder="Ex: João da Silva Sauro" />
                                         <div className="bg-blue-50 p-4 rounded-lg flex gap-3 text-blue-800 text-sm">
-                                            <Info size={20} className="shrink-0" /> <p>Não utilize abreviações para evitar problemas na emissão de contratos.</p>
+                                            <Info size={20} className="shrink-0" /> <p>Não utilize abreviações!</p>
                                         </div>
                                     </div>
                                 )}
