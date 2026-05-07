@@ -426,3 +426,49 @@ export async function getProposalById(id: string) {
         return null;
     }
 }
+
+export async function batchImportProposals(proposals: any[]) {
+    try {
+        const db = getAdminDb();
+        const results = {
+            successCount: 0,
+            failCount: 0,
+            errors: [] as string[]
+        };
+
+        for (const data of proposals) {
+            try {
+                // Simple CPF uniqueness check
+                const snapshot = await db.collection("proposals").where("cpf", "==", data.cpf).limit(1).get();
+                if (!snapshot.empty) {
+                    results.failCount++;
+                    results.errors.push(`CPF ${data.cpf} já cadastrado.`);
+                    continue;
+                }
+
+                const uploadToken = randomUUID();
+                const uploadTokenExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+                await db.collection("proposals").add({
+                    ...data,
+                    uploadToken,
+                    uploadTokenExpires,
+                    createdAt: new Date().toISOString(),
+                    status: "pending_documents",
+                    FLG_CADASTRO_SITE: 0
+                });
+
+                results.successCount++;
+            } catch (err: any) {
+                console.error(`Error importing proposal for ${data.cpf}:`, err);
+                results.failCount++;
+                results.errors.push(`Erro ao salvar ${data.cpf}: ${err.message}`);
+            }
+        }
+
+        return { success: true, ...results };
+    } catch (error) {
+        console.error("Error in batchImportProposals:", error);
+        return { success: false, message: "Erro interno no servidor ao importar lote." };
+    }
+}

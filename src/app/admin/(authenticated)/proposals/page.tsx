@@ -1,12 +1,22 @@
 'use client';
 
-import { getProposals, searchProposals, getProposalsByCampaign, deleteProposal, getAllProposalsByCampaign } from '@/actions/proposal-actions';
+import { getProposals, searchProposals, getProposalsByCampaign, deleteProposal, getAllProposalsByCampaign, batchImportProposals } from '@/actions/proposal-actions';
 import { getCampaignsWithCounts } from '@/actions/campaign-actions';
 import { batchSyncProposalsWithCRM } from '@/actions/document-actions';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
-import { Eye, FileText, Loader2, RefreshCw, LayoutList, Search, X, ChevronDown, ChevronUp, Trash2, SortAsc, Calendar, LinkIcon, Check, Download } from 'lucide-react';
+import { Eye, FileText, Loader2, RefreshCw, LayoutList, Search, X, ChevronDown, ChevronUp, Trash2, SortAsc, Calendar, LinkIcon, Check, Download, Upload, FileSpreadsheet } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Papa from 'papaparse';
+
+const CSV_TEMPLATE_HEADERS = [
+    "nomeCompleto", "cpf", "email", "telefone", "dataNascimento", 
+    "nomeMae", "pis", "sexo", "corRaca", "estadoCivil", 
+    "nacionalidade", "naturalidadeEstado", "naturalidadeMunicipio", 
+    "cep", "estado", "cidade", "logradouroTipo", "logradouroNome", 
+    "numero", "bairro", "escolaridade", "categoriaFuncao", 
+    "tamanhoCamisa", "criterioLocalidade", "criterioExperiencia", "criterioDisponibilidade"
+];
 
 export default function ProposalsPage() {
     const [campaigns, setCampaigns] = useState<any[]>([]);
@@ -25,6 +35,10 @@ export default function ProposalsPage() {
     const [markers, setMarkers] = useState<string[]>([]);
     const [isBatchSyncing, setIsBatchSyncing] = useState<string | null>(null);
     const PAGE_SIZE = 50;
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [importing, setImporting] = useState(false);
+    const [importResults, setImportResults] = useState<{ success: number; fail: number; errors: string[] } | null>(null);
 
     const fetchCampaigns = async () => {
         setLoading(true);
@@ -148,7 +162,7 @@ export default function ProposalsPage() {
             // Define columns
             const headers = [
                 "Data", "Nome Completo", "CPF", "Status", "Telefone", "Email",
-                "Cargo/Categoria", "Cidade", "Estado", "CEP", "Logradouro", "Numero", "Bairro", "tamanhoCamisa"
+                "Cargo/Categoria", "Cidade", "Estado", "CEP", "Logradouro", "Numero", "Bairro", "tamanhoCamisa", "Link"
             ];
 
             // Map rows
@@ -166,7 +180,8 @@ export default function ProposalsPage() {
                 `${p.logradouroTipo} ${p.logradouroNome}`,
                 p.numero,
                 p.bairro,
-                p.tamanhoCamisa
+                p.tamanhoCamisa,
+                p.uploadToken
             ]);
 
             // Combine into CSV string
@@ -217,6 +232,76 @@ export default function ProposalsPage() {
         } finally {
             setIsBatchSyncing(null);
         }
+    };
+
+    const handleDownloadTemplate = () => {
+        const csvContent = CSV_TEMPLATE_HEADERS.join(",");
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", "template_importacao_propostas.csv");
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handleImportClick = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !expandedCampaignId) return;
+
+        setImporting(true);
+        Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            complete: async (results) => {
+                const proposals = results.data.map((row: any) => ({
+                    ...row,
+                    campaignId: expandedCampaignId,
+                    aceiteConcordancia: true,
+                    aceiteLGPD: true,
+                    status: 'pending_documents'
+                }));
+
+                if (proposals.length === 0) {
+                    alert("Arquivo vazio ou sem dados válidos.");
+                    setImporting(false);
+                    return;
+                }
+
+                if (!confirm(`Deseja importar ${proposals.length} propostas para esta campanha?`)) {
+                    setImporting(false);
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                    return;
+                }
+
+                const res = await batchImportProposals(proposals);
+                if (res.success) {
+                    setImportResults({
+                        success: res.successCount || 0,
+                        fail: res.failCount || 0,
+                        errors: res.errors || []
+                    });
+                    // Refresh view
+                    await fetchCampaigns();
+                    await fetchProposalsForCampaign(expandedCampaignId);
+                } else {
+                    alert(res.message || "Erro ao importar arquivo.");
+                }
+                setImporting(false);
+                if (fileInputRef.current) fileInputRef.current.value = '';
+            },
+            error: (error) => {
+                console.error("CSV Parse Error:", error);
+                alert("Erro ao ler arquivo CSV.");
+                setImporting(false);
+            }
+        });
     };
 
     return (
@@ -373,6 +458,28 @@ export default function ProposalsPage() {
                                                     >
                                                         <Download size={14} /> EXPORTAR CSV
                                                     </button>
+                                                    <button
+                                                        onClick={handleImportClick}
+                                                        disabled={importing || campLoading}
+                                                        className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 disabled:opacity-50"
+                                                    >
+                                                        {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                                                        IMPORTAR CSV
+                                                    </button>
+                                                    <button
+                                                        onClick={handleDownloadTemplate}
+                                                        className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100"
+                                                        title="Baixar Template CSV"
+                                                    >
+                                                        <FileSpreadsheet size={14} /> TEMPLATE
+                                                    </button>
+                                                    <input
+                                                        type="file"
+                                                        ref={fileInputRef}
+                                                        onChange={handleFileChange}
+                                                        accept=".csv"
+                                                        className="hidden"
+                                                    />
                                                 </div>
                                             </div>
 
@@ -416,6 +523,58 @@ export default function ProposalsPage() {
                     ))}
                 </div>
             )}
+
+            {/* IMPORT RESULTS MODAL */}
+            <AnimatePresence>
+                {importResults && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-white rounded-2xl shadow-xl border max-w-lg w-full overflow-hidden"
+                        >
+                            <div className="p-6 border-b flex justify-between items-center">
+                                <h3 className="font-bold text-lg text-[#002B49]">Resultado da Importação</h3>
+                                <button onClick={() => setImportResults(null)} className="text-gray-400 hover:text-gray-600">
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-green-50 border border-green-100 p-4 rounded-xl text-center">
+                                        <div className="text-2xl font-black text-green-600">{importResults.success}</div>
+                                        <div className="text-xs font-bold text-green-800 uppercase">Sucesso</div>
+                                    </div>
+                                    <div className="bg-red-50 border border-red-100 p-4 rounded-xl text-center">
+                                        <div className="text-2xl font-black text-red-600">{importResults.fail}</div>
+                                        <div className="text-xs font-bold text-red-800 uppercase">Falhas</div>
+                                    </div>
+                                </div>
+
+                                {importResults.errors.length > 0 && (
+                                    <div className="space-y-2">
+                                        <p className="text-xs font-bold text-gray-400 uppercase">Erros Encontrados:</p>
+                                        <div className="max-h-40 overflow-y-auto bg-gray-50 rounded-lg p-3 text-xs font-mono text-red-600 space-y-1 border">
+                                            {importResults.errors.map((err, i) => (
+                                                <div key={i}>• {err}</div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="p-6 bg-gray-50 border-t flex justify-end">
+                                <button
+                                    onClick={() => setImportResults(null)}
+                                    className="px-6 py-2 bg-[#002B49] text-white rounded-xl font-bold hover:bg-[#001f35] transition-colors"
+                                >
+                                    FECHAR
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

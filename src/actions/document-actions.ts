@@ -114,7 +114,6 @@ async function performSyncWithCRM(proposalId: string) {
         formData.append("Address.TpLograd", proposalData.logradouroTipo || "Rua");
         formData.append("Address.Complement", proposalData.complemento || "nao coletado");
 
-        const isBrazilian = ["BRASILEIRA", "BRASILEIRO"].includes((proposalData.nacionalidade || "").toUpperCase());
         formData.append("Address.CountryResid", "");
 
         formData.append("Documents.RG", proposalData.rg || "");
@@ -127,12 +126,12 @@ async function performSyncWithCRM(proposalId: string) {
         formData.append("ProfessionalInformation.Profession", proposalData.cargo || proposalData.categoriaFuncao || "nao coletado");
         formData.append("ProfessionalInformation.EducationalLevel", mapEducation(proposalData.escolaridade || ""));
 
-        formData.append("BankAccount.Bank", proposalData.banco || "bradesco");
-        formData.append("BankAccount.ShortName", proposalData.banco || "bb");
-        formData.append("BankAccount.AccountType", proposalData.tipoConta || "C");
-        formData.append("BankAccount.Agency", proposalData.agencia || "00000");
-        formData.append("BankAccount.Account", proposalData.conta || "00000");
-        formData.append("BankAccount.Digit", proposalData.contaDigito || "0");
+        formData.append("BankAccount.Bank", "000");
+        formData.append("BankAccount.ShortName", (proposalData.nomeCompleto || "").split(' ')[0]);
+        formData.append("BankAccount.AccountType", "C");
+        formData.append("BankAccount.Agency", "00000");
+        formData.append("BankAccount.Account", "00000");
+        formData.append("BankAccount.Digit", "0");
 
         if (finalClientId && finalClientId !== "0" && finalClientId !== "00") {
             formData.append("ContractId", finalClientId);
@@ -158,7 +157,7 @@ async function performSyncWithCRM(proposalId: string) {
                 let blob = await downloadFileAsBlob(doc.url);
                 if (blob) {
                     const docType = (doc.type as string).toLowerCase();
-                    const isHeic = doc.filename?.toLowerCase().endsWith('.heic', '.heif') || blob.type === 'image/heic';
+                    const isHeic = (doc.filename?.toLowerCase().endsWith('.heic') || doc.filename?.toLowerCase().endsWith('.heif')) || blob.type === 'image/heic';
 
                     // Convert images (including HEIC) to JPG
                     if (blob.type.startsWith('image/') || isHeic) {
@@ -229,7 +228,7 @@ async function performSyncWithCRM(proposalId: string) {
                 totalSize += value.length;
             }
         }
-        
+
         const totalMB = totalSize / 1024 / 1024;
         console.log("CRM Sync Payload Keys:", payloadKeys);
         console.log(`CRM Sync Total Appx Size: ${totalMB.toFixed(2)} MB`);
@@ -237,9 +236,9 @@ async function performSyncWithCRM(proposalId: string) {
         // Safety check to avoid CRM failure (30MB limit)
         if (totalMB > 29) {
             console.error(`CRITICAL: Payload too large for CRM (${totalMB.toFixed(2)} MB)`);
-            return { 
-                success: false, 
-                message: `Os arquivos combinados são muito grandes (${totalMB.toFixed(2)} MB). O limite é 30MB. Por favor, tente reduzir o tamanho dos PDFs.` 
+            return {
+                success: false,
+                message: `Os arquivos combinados são muito grandes (${totalMB.toFixed(2)} MB). O limite é 30MB. Por favor, tente reduzir o tamanho dos PDFs.`
             };
         }
 
