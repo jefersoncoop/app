@@ -282,10 +282,11 @@ export default function ProposalsPage() {
 
                 const res = await batchImportProposals(proposals);
                 if (res.success) {
+                    const resOk = res as { success: boolean; successCount: number; failCount: number; errors: string[] };
                     setImportResults({
-                        success: res.successCount || 0,
-                        fail: res.failCount || 0,
-                        errors: res.errors || []
+                        success: resOk.successCount || 0,
+                        fail: resOk.failCount || 0,
+                        errors: resOk.errors || []
                     });
                     // Refresh view
                     await fetchCampaigns();
