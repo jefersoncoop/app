@@ -127,7 +127,10 @@ async function performSyncWithCRM(proposalId: string) {
         formData.append("ProfessionalInformation.EducationalLevel", mapEducation(proposalData.escolaridade || ""));
 
         formData.append("BankAccount.Bank", "000");
-        formData.append("BankAccount.ShortName", (proposalData.nomeCompleto || "").split(' ')[0]);
+        formData.append(
+            "BankAccount.ShortName",
+            (proposalData.nomeCompleto || "").trim().split(/\s+/)[0] || ""
+        );
         formData.append("BankAccount.AccountType", "C");
         formData.append("BankAccount.Agency", "00000");
         formData.append("BankAccount.Account", "00000");
