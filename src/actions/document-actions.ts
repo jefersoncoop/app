@@ -1,18 +1,69 @@
 'use server';
 
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDb, getAdminStorage } from "@/lib/firebase-admin";
 import citiesData from "@/data/ibge-cities.json";
 import sharp from 'sharp';
 import convert from 'heic-convert';
 
-export async function saveDocumentMetadata(proposalId: string, url: string, filename: string, type: string) {
+function getPathFromUrl(url: string): string | null {
+    try {
+        if (!url || !url.includes("firebasestorage.googleapis.com")) return null;
+        const decodedUrl = decodeURIComponent(url);
+        const parts = decodedUrl.split("/o/");
+        if (parts.length < 2) return null;
+        const pathPart = parts[1].split("?")[0];
+        return pathPart;
+    } catch (e) {
+        console.error("Error parsing URL path", e);
+        return null;
+    }
+}
+
+export async function saveDocumentMetadata(
+    proposalId: string, 
+    url: string, 
+    filename: string, 
+    type: string,
+    size?: number,
+    hash?: string,
+    path?: string
+) {
     try {
         const db = getAdminDb();
-        await db.collection("proposals").doc(proposalId).collection("documents").add({
+        const docsRef = db.collection("proposals").doc(proposalId).collection("documents");
+
+        // Delete any existing documents of this type (clean overwrites)
+        const snapshot = await docsRef.where("type", "==", type).get();
+        const batch = db.batch();
+        const bucket = getAdminStorage().bucket();
+
+        for (const doc of snapshot.docs) {
+            const data = doc.data();
+            const storagePath = data.path || getPathFromUrl(data.url);
+            if (storagePath) {
+                try {
+                    const file = bucket.file(storagePath);
+                    const [exists] = await file.exists();
+                    if (exists) {
+                        await file.delete();
+                    }
+                } catch (storageErr) {
+                    console.error("Error deleting old file from Storage in saveDocumentMetadata:", storageErr);
+                }
+            }
+            batch.delete(doc.ref);
+        }
+        await batch.commit();
+
+        // Add the new document metadata
+        await docsRef.add({
             url,
             filename,
             type,
             uploadedAt: new Date().toISOString(),
+            size: size || 0,
+            hash: hash || "",
+            path: path || ""
         });
         return { success: true };
     } catch (e) {
@@ -28,9 +79,24 @@ export async function deleteDocumentMetadata(proposalId: string, docType: string
         const snapshot = await docsRef.where("type", "==", docType).get();
 
         const batch = db.batch();
-        snapshot.docs.forEach(doc => {
+        const bucket = getAdminStorage().bucket();
+
+        for (const doc of snapshot.docs) {
+            const data = doc.data();
+            const storagePath = data.path || getPathFromUrl(data.url);
+            if (storagePath) {
+                try {
+                    const file = bucket.file(storagePath);
+                    const [exists] = await file.exists();
+                    if (exists) {
+                        await file.delete();
+                    }
+                } catch (storageErr) {
+                    console.error("Error deleting old file from Storage in deleteDocumentMetadata:", storageErr);
+                }
+            }
             batch.delete(doc.ref);
-        });
+        }
 
         await batch.commit();
         return { success: true };
@@ -39,6 +105,59 @@ export async function deleteDocumentMetadata(proposalId: string, docType: string
         return { success: false, message: "Failed to delete metadata" };
     }
 }
+
+export async function getProposalDocuments(proposalId: string) {
+    try {
+        const db = getAdminDb();
+        const docsSnapshot = await db.collection("proposals").doc(proposalId).collection("documents").get();
+        const documents = docsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        return { success: true, documents };
+    } catch (e) {
+        console.error("Error getting proposal docs", e);
+        return { success: false, message: "Failed to get documents", documents: [] };
+    }
+}
+
+export async function deleteProposalDocument(proposalId: string, docId: string, docType: string, storagePath?: string) {
+    try {
+        const db = getAdminDb();
+        const docRef = db.collection("proposals").doc(proposalId).collection("documents").doc(docId);
+        
+        // Read data first for path/url
+        const docSnapshot = await docRef.get();
+        let finalPath = storagePath;
+        
+        if (docSnapshot.exists) {
+            const data = docSnapshot.data() || {};
+            if (!finalPath) {
+                finalPath = data.path || getPathFromUrl(data.url);
+            }
+        }
+        
+        // 1. Delete from Firestore
+        await docRef.delete();
+        
+        // 2. Delete from Firebase Storage
+        if (finalPath) {
+            try {
+                const bucket = getAdminStorage().bucket();
+                const file = bucket.file(finalPath);
+                const [exists] = await file.exists();
+                if (exists) {
+                    await file.delete();
+                }
+            } catch (storageErr) {
+                console.error("Error deleting from Firebase Storage in deleteProposalDocument:", storageErr);
+            }
+        }
+        
+        return { success: true };
+    } catch (e) {
+        console.error("Error deleting proposal document", e);
+        return { success: false, message: e instanceof Error ? e.message : "Erro ao deletar documento" };
+    }
+}
+
 
 /**
  * Internal logic for CRM synchronization

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { storage } from "@/lib/firebase";
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 import { saveDocumentMetadata, deleteDocumentMetadata } from "@/actions/document-actions";
@@ -12,15 +12,36 @@ interface UploadZoneProps {
     docType: string;
     label: string;
     description?: string;
-    onSuccess?: () => void;
+    onSuccess?: (docInfo: { url: string, filename: string, size?: number, hash?: string, path?: string, id?: string }) => void;
     onDelete?: () => void;
+    initialFile?: { url: string, filename: string, size?: number, hash?: string, path?: string, id?: string } | null;
+    onBeforeUpload?: (file: File, hash: string) => Promise<boolean>;
 }
 
-export default function UploadZone({ proposalId, docType, label, description, onSuccess, onDelete }: UploadZoneProps) {
-    const [status, setStatus] = useState<'idle' | 'uploading' | 'success' | 'error' | 'deleting'>('idle');
+async function getFileHash(file: File | Blob): Promise<string> {
+    const arrayBuffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export default function UploadZone({ proposalId, docType, label, description, onSuccess, onDelete, initialFile, onBeforeUpload }: UploadZoneProps) {
+    const [status, setStatus] = useState<'idle' | 'uploading' | 'success' | 'error' | 'deleting'>(initialFile ? 'success' : 'idle');
     const [progress, setProgress] = useState(0);
-    const [fileName, setFileName] = useState('');
-    const [lastUploadPath, setLastUploadPath] = useState<string | null>(null);
+    const [fileName, setFileName] = useState(initialFile ? initialFile.filename : '');
+    const [lastUploadPath, setLastUploadPath] = useState<string | null>(initialFile ? (initialFile.path || null) : null);
+
+    useEffect(() => {
+        if (initialFile) {
+            setStatus('success');
+            setFileName(initialFile.filename);
+            setLastUploadPath(initialFile.path || null);
+        } else {
+            setStatus('idle');
+            setFileName('');
+            setLastUploadPath(null);
+        }
+    }, [initialFile]);
 
     const compressImage = (file: File): Promise<Blob | File> => {
         return new Promise((resolve) => {
@@ -89,6 +110,20 @@ export default function UploadZone({ proposalId, docType, label, description, on
             const file = await compressImage(originalFile);
             console.log(`Original: ${originalFile.size} bytes, Compressed: ${file.size} bytes`);
 
+            // Compute hash of the final file to be uploaded
+            const hash = await getFileHash(file);
+
+            // Run validation callback if available (check duplicate & size limit)
+            if (onBeforeUpload) {
+                const allowed = await onBeforeUpload(file as File, hash);
+                if (!allowed) {
+                    setStatus('idle');
+                    setFileName('');
+                    e.target.value = '';
+                    return;
+                }
+            }
+
             // 1. Upload to Firebase Storage
             const path = `uploads/${proposalId}/${docType}_${Date.now()}_${originalFile.name}`;
             const storageRef = ref(storage, path);
@@ -108,11 +143,19 @@ export default function UploadZone({ proposalId, docType, label, description, on
                     // 2. Get URL
                     const url = await getDownloadURL(uploadTask.snapshot.ref);
 
-                    // 3. Save Metadata
-                    const res = await saveDocumentMetadata(proposalId, url, originalFile.name, docType);
+                    // 3. Save Metadata (passing size, hash, path)
+                    const res = await saveDocumentMetadata(proposalId, url, originalFile.name, docType, file.size, hash, path);
                     if (res.success) {
                         setStatus('success');
-                        if (onSuccess) onSuccess();
+                        if (onSuccess) {
+                            onSuccess({
+                                url,
+                                filename: originalFile.name,
+                                size: file.size,
+                                hash,
+                                path
+                            });
+                        }
                     } else {
                         setStatus('error');
                     }
@@ -151,6 +194,7 @@ export default function UploadZone({ proposalId, docType, label, description, on
             setStatus('success'); // Revert to success if delete fails
         }
     };
+
 
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 transition-all hover:shadow-md">

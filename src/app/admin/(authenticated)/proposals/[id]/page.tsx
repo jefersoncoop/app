@@ -1,11 +1,20 @@
 'use client';
 
 import { getProposalById, resendInitialNotification } from '@/actions/proposal-actions';
-import { syncProposalWithCRM, resendFinalNotification } from '@/actions/document-actions';
+import { syncProposalWithCRM, resendFinalNotification, deleteProposalDocument } from '@/actions/document-actions';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ChevronLeft, FileText, Download, Calendar, User, IdCard, Phone, MapPin, Briefcase, Mail, Send, CheckCircle2, AlertCircle, Loader2, Bell, History, RotateCw, LinkIcon, Check } from 'lucide-react';
+import { ChevronLeft, FileText, Download, Calendar, User, IdCard, Phone, MapPin, Briefcase, Mail, Send, CheckCircle2, AlertCircle, Loader2, Bell, History, RotateCw, LinkIcon, Check, Trash2, AlertTriangle } from 'lucide-react';
 import { motion } from 'framer-motion';
+
+function formatBytes(bytes?: number) {
+    if (!bytes) return 'Indisponível';
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
 
 export default function ProposalDetailPage() {
     const { id } = useParams();
@@ -17,6 +26,33 @@ export default function ProposalDetailPage() {
     const [syncResult, setSyncResult] = useState<{ success: boolean, message: string } | null>(null);
     const [resendResult, setResendResult] = useState<{ success: boolean, message: string } | null>(null);
     const [copied, setCopied] = useState(false);
+    const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+
+    const handleDeleteDoc = async (docId: string, docType: string, storagePath?: string) => {
+        if (!confirm("Tem certeza que deseja excluir permanentemente este documento anexado?")) return;
+        setDeletingDocId(docId);
+        try {
+            const res = await deleteProposalDocument(id as string, docId, docType, storagePath);
+            if (res.success) {
+                // Refresh proposal data
+                const data = await getProposalById(id as string);
+                setProposal(data);
+            } else {
+                alert(res.message || "Erro ao excluir documento");
+            }
+        } catch (error) {
+            console.error("Delete error:", error);
+            alert("Erro ao excluir o documento.");
+        } finally {
+            setDeletingDocId(null);
+        }
+    };
+
+    const isDuplicateDoc = (doc: any) => {
+        if (!doc.hash) return false;
+        return proposal?.documents?.some((otherDoc: any) => otherDoc.id !== doc.id && otherDoc.hash === doc.hash);
+    };
+
 
     useEffect(() => {
         async function fetchProposal() {
@@ -291,32 +327,60 @@ export default function ProposalDetailPage() {
 
                 {proposal.documents && proposal.documents.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {proposal.documents.map((doc: any) => (
-                            <motion.div
-                                key={doc.id}
-                                whileHover={{ scale: 1.02 }}
-                                className="border rounded-2xl p-4 flex flex-col gap-4 bg-gray-50 hover:bg-white hover:shadow-md transition-all group"
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className="bg-[#002B49] text-[#CCFF00] p-3 rounded-xl group-hover:scale-110 transition-transform">
-                                        <FileText size={24} />
-                                    </div>
-                                    <div className="flex-1 overflow-hidden">
-                                        <p className="text-sm font-bold text-[#002B49] truncate uppercase">{doc.type?.replace('_', ' ')}</p>
-                                        <p className="text-[10px] text-gray-400 truncate">{doc.filename}</p>
-                                    </div>
-                                </div>
-                                <a
-                                    href={doc.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center justify-center gap-2 bg-[#002B49] text-white py-3 rounded-xl text-xs font-bold hover:bg-[#001b2e] transition-colors"
+                        {proposal.documents.map((doc: any) => {
+                            const isDuplicate = isDuplicateDoc(doc);
+                            return (
+                                <motion.div
+                                    key={doc.id}
+                                    whileHover={{ scale: 1.02 }}
+                                    className="border rounded-2xl p-4 flex flex-col gap-4 bg-gray-50 hover:bg-white hover:shadow-md transition-all group"
                                 >
-                                    <Download size={14} /> VISUALIZAR ARQUIVO
-                                </a>
-                                <p className="text-[9px] text-center text-gray-400">Enviado em: {new Date(doc.uploadedAt).toLocaleString('pt-BR')}</p>
-                            </motion.div>
-                        ))}
+                                    <div className="flex items-center gap-3">
+                                        <div className="bg-[#002B49] text-[#CCFF00] p-3 rounded-xl group-hover:scale-110 transition-transform">
+                                            <FileText size={24} />
+                                        </div>
+                                        <div className="flex-1 overflow-hidden">
+                                            <p className="text-sm font-bold text-[#002B49] truncate uppercase">{doc.type?.replace('_', ' ')}</p>
+                                            <p className="text-[10px] text-gray-400 truncate">{doc.filename}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Info: Size & Hash (Duplicate Badge) */}
+                                    <div className="flex justify-between items-center text-[10px] font-semibold text-gray-500 bg-white/50 p-2 rounded-lg border">
+                                        <span>Tam: <span className="font-bold text-[#002B49]">{formatBytes(doc.size)}</span></span>
+                                        {isDuplicate && (
+                                            <span className="flex items-center gap-1 text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded font-black uppercase text-[8px] animate-pulse">
+                                                <AlertTriangle size={10} /> Repetido
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="flex flex-col gap-2">
+                                        <a
+                                            href={doc.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center justify-center gap-2 bg-[#002B49] text-white py-3 rounded-xl text-xs font-bold hover:bg-[#001b2e] transition-colors"
+                                        >
+                                            <Download size={14} /> VISUALIZAR ARQUIVO
+                                        </a>
+                                        <button
+                                            onClick={() => handleDeleteDoc(doc.id, doc.type, doc.path)}
+                                            disabled={deletingDocId === doc.id}
+                                            className="flex items-center justify-center gap-2 bg-red-50 text-red-600 border border-red-200 py-2.5 rounded-xl text-xs font-bold hover:bg-red-100 hover:text-red-700 transition-colors disabled:opacity-50"
+                                        >
+                                            {deletingDocId === doc.id ? (
+                                                <Loader2 className="animate-spin" size={14} />
+                                            ) : (
+                                                <Trash2 size={14} />
+                                            )}
+                                            EXCLUIR ANEXO
+                                        </button>
+                                    </div>
+                                    <p className="text-[9px] text-center text-gray-400">Enviado em: {new Date(doc.uploadedAt).toLocaleString('pt-BR')}</p>
+                                </motion.div>
+                            );
+                        })}
                     </div>
                 ) : (
                     <div className="text-center py-12 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
