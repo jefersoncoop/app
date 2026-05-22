@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useForm, FormProvider, useFormContext } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, CheckCircle, Info, ShieldCheck } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle, Info, ShieldCheck, FileText } from 'lucide-react';
 import { proposalSchema, ProposalFormData } from '@/lib/schemas/proposal-schema';
 import { submitProposal, checkExistingProposalByCPF, updateProposal } from '@/actions/proposal-actions';
 import statesCitiesData from '@/data/ibge-states-cities.json';
@@ -167,7 +167,8 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
         mode: "onBlur",
         defaultValues: {
             aceiteConcordancia: false,
-            aceiteLGPD: false
+            aceiteLGPD: false,
+            aceiteTermoAdessao: false
         }
     });
 
@@ -184,8 +185,9 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
         { id: 'profissional', progress: 60, fields: ['escolaridade', 'categoriaFuncao'] },
         { id: 'logistica', progress: 70, fields: ['tamanhoCamisa'] },
         { id: 'criterios', progress: 80, fields: ['criterioLocalidade', 'criterioExperiencia', 'criterioDisponibilidade'] },
-        { id: 'termos', progress: 90, fields: ['aceiteConcordancia'] },
-        { id: 'lgpd', progress: 95, fields: ['aceiteLGPD'] },
+        { id: 'termos', progress: 85, fields: ['aceiteConcordancia'] },
+        { id: 'lgpd', progress: 90, fields: ['aceiteLGPD'] },
+        { id: 'termoadesao', progress: 95, fields: ['aceiteTermoAdessao'] },
         { id: 'success', progress: 100 }
     ];
 
@@ -628,6 +630,75 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                     </div>
                                 )}
 
+                                {/* TELA: TERMO DE ADESÃO (95%) */}
+                                {step === 14 && (
+                                    <div className="space-y-6">
+                                        <div className="flex justify-center"><FileText size={64} className="text-[#002B49]" /></div>
+                                        <h2 className="text-2xl font-bold text-[#002B49]">Termo de Ciência e Adesão</h2>
+                                        <div className="h-40 overflow-y-auto bg-gray-50 p-4 rounded-xl border border-gray-200 text-sm text-gray-700 leading-relaxed text-left">
+                                            <p className="font-bold text-center mb-2">TERMO DE CIÊNCIA E ADESÃO À CONDIÇÃO DE COOPERADO(A)</p>
+                                            <p className="mb-4">
+                                                Pelo presente instrumento particular, de um lado, a <strong>COOPERATIVA DE TRABALHO DOS PROFISSIONAIS DA EDUCAÇÃO DO RIO GRANDE DO NORTE – COOPEDU</strong>, pessoa jurídica de direito privado, constituída sob a forma de sociedade cooperativa, inscrita no CNPJ nº 35.537.126/0001-84, com sede em Rua projetada 01, SN, Mirante do Trairi, Monte Alegre-RN, neste ato representada na forma de seu Estatuto Social, doravante denominada simplesmente <strong>COOPEDU</strong>; de outro lado, <strong>{methods.watch('nomeCompleto') || '___________________________________________________________________________'}</strong>, brasileiro(a), portador(a) do CPF nº <strong>{methods.watch('cpf') || '____________'}</strong>, residente e domiciliado(a) em <strong>{methods.watch('logradouroNome') ? `${methods.watch('logradouroTipo') || ''} ${methods.watch('logradouroNome')}, nº ${methods.watch('numero')}${methods.watch('complemento') ? `, ${methods.watch('complemento')}` : ''}, ${methods.watch('bairro')}, ${methods.watch('cidade')}-${methods.watch('estado')}` : '____________________________________________'}</strong>, regularmente admitido(a) no quadro social da COOPERATIVA, doravante denominado(a) simplesmente <strong>COOPERADO(A)</strong>, têm entre si justo e acordado o presente TERMO DE CIÊNCIA E ADESÃO À RELAÇÃO COOPERATIVISTA, que se regerá pela Lei nº 5.764/1971, pela Lei nº 12.690/2012, pelo Estatuto Social da COOPERATIVA e pelas cláusulas seguintes:
+                                            </p>
+                                            
+                                            <p className="font-bold mt-4 text-[#002B49]">DA NATUREZA DA RELAÇÃO JURÍDICA</p>
+                                            <p className="mb-2"><strong>CLÁUSULA PRIMEIRA.</strong> O(A) COOPERADO(A) declara ciência de que sua vinculação à COOPERATIVA possui natureza societária, civil e cooperativista, na condição de cooperado(a), nos termos da legislação aplicável às sociedades cooperativas.</p>
+                                            <p className="mb-4"><em>Parágrafo único.</em> A relação ora formalizada não possui natureza empregatícia, não se confundindo com contrato individual de trabalho e não se submetendo ao regime da Consolidação das Leis do Trabalho – CLT.</p>
+                                            
+                                            <p className="font-bold mt-4 text-[#002B49]">DA CONDIÇÃO DE COOPERADO(A)</p>
+                                            <p className="mb-4"><strong>CLÁUSULA SEGUNDA.</strong> O(A) COOPERADO(A) participa das atividades desenvolvidas pela COOPERATIVA na qualidade de COOPERADO(A), integrando a organização econômica e social da sociedade cooperativa, com direitos e deveres previstos em Lei, no Estatuto Social e nas deliberações regularmente aprovadas pelos órgãos competentes da COOPEDU – Assembleias Gerais, Conselho de Administração, Conselho Fiscal, entre outros.</p>
+                                            
+                                            <p className="font-bold mt-4 text-[#002B49]">DA PARTICIPAÇÃO NAS ATIVIDADES COOPERATIVAS</p>
+                                            <p className="mb-2"><strong>CLÁUSULA TERCEIRA.</strong> A participação do(a) COOPERADO(A) nas atividades, projetos, contratos e serviços executados pela COOPEDU decorre de sua condição de COOPERADO(A), em regime de cooperação, autonomia (técnica e profissional), ajuda mútua e gestão democrática, observados os princípios e valores do cooperativismo.</p>
+                                            <p className="mb-2"><em>Parágrafo primeiro.</em> O COOPERADO(A) pode participar das prestações de serviços educacionais complementares junto a entidades contratantes, deste que previstas no Estatuto Social da COOPEDU, sejam elas de apoio administrativo, suporte educacional, atividades operacionais e/ou serviços técnicos compatíveis com a qualificação profissional do COOPERADO(A).</p>
+                                            <p className="mb-4"><em>Parágrafo segundo.</em> A coordenação das atividades possui caráter organizacional, decorrente de Lei (12.690/2012).</p>
+                                            
+                                            <p className="font-bold mt-4 text-[#002B49]">DA INEXISTÊNCIA DE VÍNCULO EMPREGATÍCIO</p>
+                                            <p className="mb-4"><strong>CLÁUSULA QUARTA.</strong> As partes reconhecem, de forma expressa, que entre a COOPEDU e o(a) COOPERADO(A) não existe vínculo de emprego, inexistindo, em especial, os elementos caracterizadores da relação empregatícia, tais como subordinação jurídica, pessoalidade, salário e poder disciplinar próprio do empregador.</p>
+                                            
+                                            <p className="font-bold mt-4 text-[#002B49]">DA REMUNERAÇÃO/RETORNO</p>
+                                            <p className="mb-4"><strong>CLÁUSULA QUINTA.</strong> Os valores eventualmente percebidos pelo(a) COOPERADO(A) em razão de sua participação nas atividades da COOPEDU possuem natureza de retorno cooperativo, rateio, distribuição de resultados ou retribuição civil/cooperativista, conforme a organização interna da COOPERATIVA e os critérios definidos em Lei, no Estatuto Social e nas deliberações sociais, não possuindo natureza salarial.</p>
+                                            
+                                            <p className="font-bold mt-4 text-[#002B49]">DA AUTONOMIA E DA ORGANIZAÇÃO COOPERATIVA</p>
+                                            <p className="mb-4"><strong>CLÁUSULA SEXTA.</strong> O(A) COOPERADO(A) desempenhará suas atividades com autonomia compatível com a natureza cooperativista da relação, observando as orientações operacionais, técnicas e organizacionais necessárias ao regular funcionamento da COOPEDU e ao cumprimento de seu objeto e objetivos sociais, sem que isso caracterize subordinação empregatícia, sendo sua administração baseada na autogestão e controle democrático das atividades exercida por meio das Assembleias Gerais e pelo Conselho de Administração.</p>
+                                            
+                                            <p className="font-bold mt-4 text-[#002B49]">DA CIÊNCIA DO ESTATUTO E DAS DELIBERAÇÕES SOCIAIS</p>
+                                            <p className="mb-2"><strong>CLÁUSULA SÉTIMA.</strong> O(A) COOPERADO(A) declara, neste ato:</p>
+                                            <ul className="list-disc pl-5 mb-4 space-y-1">
+                                                <li>que conhece e aceita as disposições do Estatuto Social da COOPEDU;</li>
+                                                <li>que se compromete a cumprir as deliberações regularmente aprovadas em Assembleia Geral e pelos órgãos de administração da COOPEDU, nos limites de suas competências;</li>
+                                                <li>que tem ciência de seus direitos e deveres como COOPERADO(A), nos termos da legislação cooperativista aplicável.</li>
+                                            </ul>
+                                            
+                                            <p className="font-bold mt-4 text-[#002B49]">DA VIGÊNCIA</p>
+                                            <p className="mb-2"><strong>CLÁUSULA OITAVA.</strong> O presente termo passa a vigorar na data de sua assinatura e permanecerá válido enquanto o(a) signatário(a) mantiver sua condição de COOPERADO(A) da COOPERATIVA, sem prejuízo das disposições legais, estatutárias e regimentais aplicáveis.</p>
+                                            <p className="mb-4"><em>Parágrafo único.</em> A Execução das atividades como COOPERADO(A) depende da disponibilidade de vagas nos contratos firmados entre a COOPEDU e as entidades contratantes, sendo facultado ao COOPERADO(A) executar aquela atividade, uma vez que estas ocorrem em regime de substituição ou rotatividade (impessoalidade), em decorrência da própria natureza da atividade cooperativista.</p>
+                                            
+                                            <p className="font-bold mt-4 text-[#002B49]">DO FORO</p>
+                                            <p className="mb-4"><strong>CLÁUSULA NONA.</strong> Fica eleito o foro da Comarca de Monte Alegre/RN, com renúncia expressa de qualquer outro, por mais privilegiado que seja, para dirimir eventuais controvérsias oriundas deste termo.</p>
+                                            
+                                            <p className="mb-4 font-semibold">E, por estarem justos e acordados, firmam o presente instrumento em duas vias de igual teor e forma.</p>
+                                            <p className="mb-6 font-semibold">Monte Alegre/RN, {new Date().getDate()} de {new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date())} de {new Date().getFullYear()}.</p>
+                                            
+                                            <div className="space-y-4 border-t pt-4 text-xs">
+                                                <p className="font-bold text-center">COOPERATIVA DE TRABALHO DOS PROFISSIONAIS DA EDUCAÇÃO DO RIO GRANDE DO NORTE – COOPEDU</p>
+                                                <p className="text-center font-semibold">Alexandre Soares Gomes<br/>Presidente</p>
+                                                <div className="my-6 text-center">
+                                                    <p className="font-bold">COOPERADO(A)</p>
+                                                    <p className="mt-4 font-semibold underline">{methods.watch('nomeCompleto') || '_______________________________________________________________________'}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <label className="flex items-center gap-3 bg-gray-100 p-4 rounded-xl cursor-pointer hover:bg-gray-200 transition-colors text-left">
+                                            <input type="checkbox" {...methods.register("aceiteTermoAdessao")} className="w-6 h-6 accent-[#002B49]" />
+                                            <span className="font-bold">Estou de acordo com os termos</span>
+                                        </label>
+                                        {methods.formState.errors.aceiteTermoAdessao && (
+                                            <p className="text-red-500 text-sm">{methods.formState.errors.aceiteTermoAdessao?.message?.toString()}</p>
+                                        )}
+                                    </div>
+                                )}
+
                                 {/* TELA: SUCESSO (100%) */}
                                 {step === steps.length - 1 && (
                                     <div className="text-center space-y-6 py-10">
@@ -662,7 +733,7 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                         {/* BARRA DE NAVEGAÇÃO INFERIOR */}
                         {step > 2 && step < steps.length - 1 && (
                             <div className="fixed bottom-0 left-0 right-0 p-6 bg-white/80 backdrop-blur-md flex justify-end items-center border-t z-40">
-                                {step === 13 ? (
+                                {step === steps.length - 2 ? (
                                     // Should be 13 based on Logic above for LGPD being the last step before success
                                     <button
                                         type="submit"

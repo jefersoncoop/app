@@ -265,6 +265,7 @@ export default function ProposalsPage() {
                     campaignId: expandedCampaignId,
                     aceiteConcordancia: true,
                     aceiteLGPD: true,
+                    aceiteTermoAdessao: true,
                     status: 'pending_documents'
                 }));
 

@@ -78,6 +78,7 @@ export const proposalSchema = z.object({
     // Jurídico
     aceiteConcordancia: z.boolean().refine(v => v === true, "Você deve aceitar a concordância"),
     aceiteLGPD: z.boolean().refine(v => v === true, "Você deve aceitar os termos da LGPD"),
+    aceiteTermoAdessao: z.boolean().refine(v => v === true, "Você deve aceitar o Termo de Ciência e Adesão"),
     // CEP (Critérios)
     criterioLocalidade: z.string().min(1, "Responda sobre a localidade"),
     criterioExperiencia: z.string().min(1, "Responda sobre a experiência"),
