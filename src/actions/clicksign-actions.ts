@@ -2,7 +2,7 @@
 
 import { getAdminDb } from "@/lib/firebase-admin";
 
-const DEFAULT_TEMPLATE_ID = "543fc3f7-a0e7-4106-bf93-0adf4fa15a2c";
+const DEFAULT_TEMPLATE_ID = "2b2ed8dc-9709-43ac-a323-85ab4b1f9f0b";
 
 interface ClickSignResponse {
     success: boolean;
