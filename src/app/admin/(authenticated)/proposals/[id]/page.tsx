@@ -2,9 +2,10 @@
 
 import { getProposalById, resendInitialNotification } from '@/actions/proposal-actions';
 import { syncProposalWithCRM, resendFinalNotification, deleteProposalDocument } from '@/actions/document-actions';
+import { resendClicksignWhatsapp, forceCreateClicksignEnvelope, getClicksignSignedDocumentUrl } from '@/actions/clicksign-actions';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ChevronLeft, FileText, Download, Calendar, User, IdCard, Phone, MapPin, Briefcase, Mail, Send, CheckCircle2, AlertCircle, Loader2, Bell, History, RotateCw, LinkIcon, Check, Trash2, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, FileText, Download, User, Phone, MapPin, Briefcase, Send, CheckCircle2, AlertCircle, Loader2, Bell, RotateCw, LinkIcon, Check, Trash2, AlertTriangle, PenLine, MessageCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 function formatBytes(bytes?: number) {
@@ -27,6 +28,11 @@ export default function ProposalDetailPage() {
     const [resendResult, setResendResult] = useState<{ success: boolean, message: string } | null>(null);
     const [copied, setCopied] = useState(false);
     const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+    const [isResendingWhatsapp, setIsResendingWhatsapp] = useState(false);
+    const [whatsappResendResult, setWhatsappResendResult] = useState<{ success: boolean, message: string } | null>(null);
+    const [isGeneratingDoc, setIsGeneratingDoc] = useState(false);
+    const [generateDocResult, setGenerateDocResult] = useState<{ success: boolean, message: string } | null>(null);
+    const [isDownloadingDoc, setIsDownloadingDoc] = useState(false);
 
     const handleDeleteDoc = async (docId: string, docType: string, storagePath?: string) => {
         if (!confirm("Tem certeza que deseja excluir permanentemente este documento anexado?")) return;
@@ -118,6 +124,53 @@ export default function ProposalDetailPage() {
         }
     };
 
+    const handleResendWhatsapp = async () => {
+        setIsResendingWhatsapp(true);
+        setWhatsappResendResult(null);
+        try {
+            const result = await resendClicksignWhatsapp(id as string);
+            setWhatsappResendResult({ success: result.success, message: result.message || '' });
+        } catch (err) {
+            setWhatsappResendResult({ success: false, message: 'Erro ao reenviar' });
+        } finally {
+            setIsResendingWhatsapp(false);
+        }
+    };
+
+    const handleGenerateDoc = async () => {
+        if (!confirm('Isso irá gerar um NOVO documento ClickSign para esta proposta. Se já existir um envelope ativo, ele será descartado. Confirmar?')) return;
+        setIsGeneratingDoc(true);
+        setGenerateDocResult(null);
+        try {
+            const result = await forceCreateClicksignEnvelope(id as string);
+            setGenerateDocResult({ success: result.success, message: result.message || (result.success ? 'Envelope criado com sucesso!' : 'Falha ao criar envelope') });
+            if (result.success) {
+                setTimeout(() => window.location.reload(), 1500);
+            }
+        } catch (err) {
+            setGenerateDocResult({ success: false, message: 'Erro ao gerar documento' });
+        } finally {
+            setIsGeneratingDoc(false);
+        }
+    };
+
+    const handleDownloadDoc = async () => {
+        setIsDownloadingDoc(true);
+        try {
+            const result = await getClicksignSignedDocumentUrl(id as string);
+            if (result.success && result.url) {
+                // Open the pre-signed S3 URL directly — browser will download the PDF
+                window.open(result.url, '_blank');
+            } else {
+                alert(result.message || 'Não foi possível obter o link do documento.');
+            }
+        } catch (err) {
+            alert('Erro ao baixar o documento.');
+        } finally {
+            setIsDownloadingDoc(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -187,6 +240,15 @@ export default function ProposalDetailPage() {
                                 {copied ? 'COPIADO!' : 'COPIAR LINK DOCS'}
                             </button>
                             <button
+                                onClick={handleGenerateDoc}
+                                disabled={isGeneratingDoc}
+                                className="flex items-center gap-2 bg-purple-500/20 text-purple-300 border border-purple-500/30 px-6 py-3 rounded-xl font-bold hover:bg-purple-500/30 transition-all disabled:opacity-50"
+                                title="Gerar documento ClickSign para assinatura"
+                            >
+                                {isGeneratingDoc ? <Loader2 className="animate-spin" size={20} /> : <PenLine size={20} />}
+                                {isGeneratingDoc ? 'GERANDO...' : proposal.clicksignEnvelopeId ? 'REGEN. DOC CLICKSIGN' : 'GERAR DOC CLICKSIGN'}
+                            </button>
+                            <button
                                 onClick={handleSyncCRM}
                                 disabled={isSyncing}
                                 className="flex items-center gap-2 bg-[#CCFF00] text-[#002B49] px-6 py-3 rounded-xl font-bold hover:shadow-lg hover:translate-y-[-2px] transition-all disabled:opacity-50 disabled:translate-y-0"
@@ -199,11 +261,20 @@ export default function ProposalDetailPage() {
                 </div>
 
                 {syncResult && (
-                    <div className={`mt-6 p-4 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-500 ${syncResult.success ? 'bg-green-500/20 border border-green-500/30 text-green-400' : 'bg-red-500/20 border border-red-500/30 text-red-00'}`}>
+                    <div className={`mt-4 p-4 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-500 ${syncResult.success ? 'bg-green-500/20 border border-green-500/30 text-green-400' : 'bg-red-500/20 border border-red-500/30 text-red-400'}`}>
                         {syncResult.success ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
                         <div>
                             <p className="font-bold">{syncResult.success ? 'Sucesso!' : 'Ocorreu um erro'}</p>
                             <p className="text-sm opacity-80">{syncResult.success ? 'A proposta foi enviada com sucesso para o CRM.' : syncResult.message}</p>
+                        </div>
+                    </div>
+                )}
+                {generateDocResult && (
+                    <div className={`mt-4 p-4 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-500 ${generateDocResult.success ? 'bg-green-500/20 border border-green-500/30 text-green-400' : 'bg-red-500/20 border border-red-500/30 text-red-400'}`}>
+                        {generateDocResult.success ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
+                        <div>
+                            <p className="font-bold">{generateDocResult.success ? 'Documento gerado!' : 'Erro ao gerar'}</p>
+                            <p className="text-sm opacity-80">{generateDocResult.message}</p>
                         </div>
                     </div>
                 )}
@@ -242,6 +313,104 @@ export default function ProposalDetailPage() {
                 <InfoField label="Profissão" value={proposal.profissao} />
                 <InfoField label="Renda Mensal" value={proposal.rendaMensal ? `R$ ${proposal.rendaMensal}` : null} />
             </Section>
+
+            {/* ClickSign Signature Section */}
+            {proposal.clicksignEnvelopeId && (
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <div className="flex justify-between items-start mb-4 border-b pb-2">
+                        <h3 className="text-lg font-bold text-[#002B49] flex items-center gap-2">
+                            <PenLine size={20} className="text-[#CCFF00] fill-[#002B49]" />
+                            Assinatura ClickSign
+                        </h3>
+                        <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${
+                            proposal.clicksignStatus === 'signed'
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-yellow-100 text-yellow-700'
+                        }`}>
+                            {proposal.clicksignStatus === 'signed' ? '✅ Assinado' : '⏳ Aguardando assinatura'}
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mb-4">
+                        <div>
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Envelope ID</p>
+                            <p className="font-mono text-xs text-[#002B49] break-all">{proposal.clicksignEnvelopeId}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Signer ID</p>
+                            <p className="font-mono text-xs text-[#002B49] break-all">{proposal.clicksignSignerId}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Status ClickSign</p>
+                            <p className="font-bold text-[#002B49]">{proposal.clicksignStatus || 'pending'}</p>
+                        </div>
+                    </div>
+
+                    {/* WhatsApp Signing Info */}
+                    {proposal.clicksignStatus !== 'signed' && (
+                        <div className="bg-gray-50 rounded-xl border p-4 space-y-3">
+                            <div className="flex items-start gap-3">
+                                <MessageCircle className="text-green-600 flex-shrink-0 mt-0.5" size={18} />
+                                <div>
+                                    <p className="text-sm font-bold text-[#002B49]">Link enviado via WhatsApp</p>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        O ClickSign gera um link único e temporário por notificação — ele não pode ser acessado diretamente aqui. Use o botão abaixo para reenviar um novo link ao signatário.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleResendWhatsapp}
+                                disabled={isResendingWhatsapp}
+                                className="w-full flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-3 rounded-xl text-sm font-bold hover:bg-green-700 transition-colors disabled:opacity-50"
+                            >
+                                {isResendingWhatsapp
+                                    ? <Loader2 className="animate-spin" size={16} />
+                                    : <MessageCircle size={16} />
+                                }
+                                REENVIAR LINK DE ASSINATURA VIA WHATSAPP
+                            </button>
+                            {whatsappResendResult && (
+                                <p className={`text-xs font-bold text-center ${
+                                    whatsappResendResult.success ? 'text-green-600' : 'text-red-600'
+                                }`}>
+                                    {whatsappResendResult.success
+                                        ? '✅ WhatsApp reenviado! O signatário receberá o link em instantes.'
+                                        : `❌ ${whatsappResendResult.message}`
+                                    }
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Download signed PDF */}
+                    <div className="flex items-center gap-3 pt-1">
+                        <button
+                            onClick={handleDownloadDoc}
+                            disabled={isDownloadingDoc}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold border transition-colors disabled:opacity-50 ${
+                                proposal.clicksignStatus === 'signed'
+                                    ? 'bg-[#002B49] text-white border-[#002B49] hover:bg-[#001f35]'
+                                    : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
+                            }`}
+                            title={proposal.clicksignStatus === 'signed' ? 'Baixar PDF assinado' : 'Baixar documento original (ainda não assinado)'}
+                        >
+                            {isDownloadingDoc
+                                ? <Loader2 className="animate-spin" size={14} />
+                                : <Download size={14} />
+                            }
+                            {isDownloadingDoc
+                                ? 'OBTENDO LINK...'
+                                : proposal.clicksignStatus === 'signed'
+                                    ? 'BAIXAR PDF ASSINADO'
+                                    : 'BAIXAR DOCUMENTO (PENDENTE)'
+                            }
+                        </button>
+                        {proposal.clicksignStatus === 'signed' && (
+                            <span className="text-xs text-gray-400">Link gerado pelo ClickSign · expira em ~5 min</span>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Notification Logs Section */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">

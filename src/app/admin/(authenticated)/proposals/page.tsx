@@ -3,19 +3,20 @@
 import { getProposals, searchProposals, getProposalsByCampaign, deleteProposal, getAllProposalsByCampaign, batchImportProposals } from '@/actions/proposal-actions';
 import { getCampaignsWithCounts } from '@/actions/campaign-actions';
 import { batchSyncProposalsWithCRM } from '@/actions/document-actions';
+import { batchResendWhatsappByCampaign } from '@/actions/clicksign-actions';
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
-import { Eye, FileText, Loader2, RefreshCw, LayoutList, Search, X, ChevronDown, ChevronUp, Trash2, SortAsc, Calendar, LinkIcon, Check, Download, Upload, FileSpreadsheet } from 'lucide-react';
+import { Eye, FileText, Loader2, RefreshCw, LayoutList, Search, X, ChevronDown, ChevronUp, Trash2, SortAsc, Calendar, LinkIcon, Check, Download, Upload, FileSpreadsheet, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Papa from 'papaparse';
 
 const CSV_TEMPLATE_HEADERS = [
-    "nomeCompleto", "cpf", "email", "telefone", "dataNascimento", 
-    "nomeMae", "pis", "sexo", "corRaca", "estadoCivil", 
-    "nacionalidade", "naturalidadeEstado", "naturalidadeMunicipio", 
-    "cep", "estado", "cidade", "logradouroTipo", "logradouroNome", 
-    "numero", "bairro", "escolaridade", "categoriaFuncao", 
-    "tamanhoCamisa", "criterioLocalidade", "criterioExperiencia", "criterioDisponibilidade"
+    "nomeCompleto", "cpf", "email", "telefone", "dataNascimento",
+    "nomeMae", "pis", "sexo", "corRaca", "estadoCivil",
+    "nacionalidade", "naturalidadeEstado", "naturalidadeMunicipio",
+    "cep", "estado", "cidade", "logradouroTipo", "logradouroNome",
+    "numero", "bairro", "escolaridade", "categoriaFuncao",
+    "tamanhoCamisa", "criterioLocalidade", "criterioExperiencia", "criterioDisponibilidade", "clicksignStatus"
 ];
 
 export default function ProposalsPage() {
@@ -34,6 +35,7 @@ export default function ProposalsPage() {
     const [page, setPage] = useState(1);
     const [markers, setMarkers] = useState<string[]>([]);
     const [isBatchSyncing, setIsBatchSyncing] = useState<string | null>(null);
+    const [isBatchResending, setIsBatchResending] = useState<string | null>(null);
     const PAGE_SIZE = 50;
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -162,7 +164,7 @@ export default function ProposalsPage() {
             // Define columns
             const headers = [
                 "Data", "Nome Completo", "CPF", "Status", "Telefone", "Email",
-                "Cargo/Categoria", "Cidade", "Estado", "CEP", "Logradouro", "Numero", "Bairro", "tamanhoCamisa", "Link"
+                "Cargo/Categoria", "Cidade", "Estado", "CEP", "Logradouro", "Numero", "Bairro", "tamanhoCamisa", "Link", "Status ClickSign"
             ];
 
             // Map rows
@@ -181,7 +183,7 @@ export default function ProposalsPage() {
                 p.numero,
                 p.bairro,
                 p.tamanhoCamisa,
-                p.uploadToken
+                p.uploadToken, p.clicksignStatus
             ]);
 
             // Combine into CSV string
@@ -231,6 +233,25 @@ export default function ProposalsPage() {
             alert("Ocorreu um erro ao processar o lote.");
         } finally {
             setIsBatchSyncing(null);
+        }
+    };
+
+    const handleBatchResend = async (campaignId: string, campaignName: string) => {
+        if (!confirm(`Isso vai reenviar o WhatsApp de assinatura para todos os signatários PENDENTES da campanha "${campaignName}". Continuar?`)) return;
+
+        setIsBatchResending(campaignId);
+        try {
+            const result = await batchResendWhatsappByCampaign(campaignId);
+            alert(
+                `✅ Reenvio concluído para "${campaignName}"\n` +
+                `Enviados: ${result.sent}\n` +
+                `Erros: ${result.errors}\n` +
+                `Total de pendentes: ${result.total}`
+            );
+        } catch (error) {
+            alert('Erro ao reenviar notificações.');
+        } finally {
+            setIsBatchResending(null);
         }
     };
 
@@ -454,9 +475,18 @@ export default function ProposalsPage() {
                                                         SINCRONIZAR CRM
                                                     </button>
                                                     <button
+                                                        onClick={() => handleBatchResend(camp.id, camp.name)}
+                                                        disabled={!!isBatchResending}
+                                                        className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border bg-green-50 text-green-700 border-green-200 hover:bg-green-100 disabled:opacity-50"
+                                                        title="Reenviar WhatsApp de assinatura para todos os pendentes desta campanha"
+                                                    >
+                                                        {isBatchResending === camp.id ? <Loader2 size={14} className="animate-spin" /> : <MessageCircle size={14} />}
+                                                        REENVIAR WHATSAPP
+                                                    </button>
+                                                    <button
                                                         onClick={() => handleExportCSV(camp.id, camp.name)}
                                                         disabled={campLoading}
-                                                        className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border bg-green-50 text-green-700 border-green-200 hover:bg-green-100 disabled:opacity-50"
+                                                        className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 disabled:opacity-50"
                                                     >
                                                         <Download size={14} /> EXPORTAR CSV
                                                     </button>
@@ -620,6 +650,7 @@ function ProposalsTable({ proposals, onDelete }: { proposals: any[], onDelete: (
                         <th className="p-4 font-bold">Nome</th>
                         <th className="p-4 font-bold">CPF</th>
                         <th className="p-4 font-bold">Status</th>
+                        <th className="p-4 font-bold">Documento</th>
                         <th className="p-4 font-bold text-right">Ações</th>
                     </tr>
                 </thead>
@@ -643,6 +674,21 @@ function ProposalsTable({ proposals, onDelete }: { proposals: any[], onDelete: (
                                             p.status === 'documents_received' ? 'Docs Recebidos' :
                                                 p.status}
                                 </span>
+                            </td>
+                            <td className="p-4">
+                                {p.clicksignStatus === 'signed' ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700">
+                                        ✅ Assinado
+                                    </span>
+                                ) : p.clicksignEnvelopeId ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-yellow-100 text-yellow-700">
+                                        ⏳ Pendente
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-400">
+                                        — Sem doc.
+                                    </span>
+                                )}
                             </td>
                             <td className="p-4 text-right flex justify-end gap-2">
                                 <Link href={`/admin/proposals/${p.id}`} className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-50 hover:bg-[#002B49] hover:text-white transition-colors border" title="Ver Detalhes">

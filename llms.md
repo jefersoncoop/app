@@ -1,0 +1,144 @@
+# Clicksign Documentation
+
+## Guides
+- [FAQ: Dúvidas comuns](https://developers.clicksign.com/docs/faq-duvidas-e-problemas-comuns.md): Principais dúvidas sobre a API e como resolver os problemas mais frequentes
+- [1.2. Informações gerais](https://developers.clicksign.com/docs/informacoes-gerais.md): Ambientes, autenticação, formatos e versões
+- [Limite de requisições](https://developers.clicksign.com/docs/limite-de-requisicoes.md): Rate Limit da API
+- [Mensagens de erro](https://developers.clicksign.com/docs/mensagens-de-erro.md): Códigos de erros e explicações
+- [Suporte](https://developers.clicksign.com/docs/nosso-suporte.md): Como obter ajuda com a API ClickSign
+- [Segurança](https://developers.clicksign.com/docs/seguranca.md): Protocolos e cifras aceitos pela Clicksign
+- [Ferramentas de Teste: Postman e Insomnia](https://developers.clicksign.com/docs/ferramentas.md)
+- [1.1. Introdução à documentação](https://developers.clicksign.com/docs/introducao-a-documentacao.md): Introdução à documentação, seções e contato de suporte
+- [Primeiros passos](https://developers.clicksign.com/docs/primeiros-passos.md): Configure seu ambiente de desenvolvimento em 4 passos simples
+- [Veja como funciona na prática](https://developers.clicksign.com/docs/veja-como-funciona-na-prática.md): Tutorial completo com cURL
+- [2.4. Assinatura Automática](https://developers.clicksign.com/docs/assinatura-automatica.md)
+- [2.3. Automação com Modelos](https://developers.clicksign.com/docs/docs-modelos.md)
+- [Tipos de requisitos de qualificação](https://developers.clicksign.com/docs/adicionar-requisito-de-qualificacao.md)
+- [Tipos de Requisito de Rubrica](https://developers.clicksign.com/docs/adicionar-requisito-de-rubrica.md)
+- [2.2. Requisitos](https://developers.clicksign.com/docs/docs-requisitos.md)
+- [Tipos de requisitos de autenticação](https://developers.clicksign.com/docs/tipos-de-requisitos-de-autenticacao.md)
+- [Regras de finalização de Envelopes](https://developers.clicksign.com/docs/aproveitamento-de-assinaturas-parciais-em-documentos-expirados.md): Defina o que acontece com envelopes que atingem a data limite
+- [Ativação performática: alta escala e assincronismo](https://developers.clicksign.com/docs/ativacao-escala-performatica.md)
+- [Documentos](https://developers.clicksign.com/docs/documentos.md)
+- [Eventos](https://developers.clicksign.com/docs/envelope-eventos.md)
+- [Gerenciamento e consultas de Envelopes](https://developers.clicksign.com/docs/gerenciamento-consultas-envelope.md)
+- [Guia de criação: O passo a passo padrão](https://developers.clicksign.com/docs/guia-de-criacao-o-passo-a-passo-padrao.md)
+- [2.1. Envelope](https://developers.clicksign.com/docs/envelope.md)
+- [Customizar notificações por e-mail](https://developers.clicksign.com/docs/customizar-notificacoes-por-email.md)
+- [Notificações](https://developers.clicksign.com/docs/notificacoes.md)
+- [Signatários](https://developers.clicksign.com/docs/signatarios.md)
+- [Tipos de notificações para os signatários](https://developers.clicksign.com/docs/tipos-de-notificacoes-do-signatario.md): Introdução às notificações
+- [Confirmação de visualização das notificações](https://developers.clicksign.com/docs/visualização-de-notificações.md)
+- [2.5. Observadores de Assinaturas](https://developers.clicksign.com/docs/observador-de-assinatura.md)
+- [Evento Close](https://developers.clicksign.com/docs/evento-close.md)
+- [Evento Document Closed](https://developers.clicksign.com/docs/evento-document-closed.md)
+- [3.1.  Visão geral Webhooks](https://developers.clicksign.com/docs/introducao-a-webhooks.md)
+- [3.3. Melhores práticas](https://developers.clicksign.com/docs/melhores-praticas-webhooks.md)
+- [Cancelamento e erros comuns](https://developers.clicksign.com/docs/cancelamento-e-erros-comuns.md)
+- [Como criar um Aceite via WhatsApp](https://developers.clicksign.com/docs/como-criar-um-aceite-via-whatsapp.md)
+- [4.5. Aceite via WhatsApp](https://developers.clicksign.com/docs/conceitos-do-aceite-via-whatsapp.md)
+- [4.1. Integre com auxílio de IA](https://developers.clicksign.com/docs/integre-com-auxílio-de-ia.md)
+- [4.4. Assinatura Presencial](https://developers.clicksign.com/docs/introducao-a-assinatura-presencial.md): Entenda mais sobre esse método de assinatura
+- [Renovação do Certificado SAML](https://developers.clicksign.com/docs/renovação-do-certificado-saml.md): O SSO (Single Sign-On) via SAML utiliza certificados digitais para garantir a segurança da comunicação entre o seu Provedor de Identidade (IdP) e a Clicksign.
+- [4.3. Widget Embedded](https://developers.clicksign.com/docs/introducao-ao-widget-embedded.md)
+- [Implementações e Testes](https://developers.clicksign.com/docs/assinatura-incorporada-implementacoes-e-testes.md): Assinatura Incorporada (embedded_signature/tokenless) - API V3
+- [Instalação de Widget para Assinatura Incorporada](https://developers.clicksign.com/docs/instalacao-de-widget-assinatura-tokenless.md): Detalhes para assinatura incorporada (embedded_signature/tokenless)
+- [Exemplo Prático com Docker](https://developers.clicksign.com/docs/exemplo-pratico-com-docker.md)
+- [Implementando o Widget Embedded na sua Aplicação](https://developers.clicksign.com/docs/implementando-o-widget-embedded.md)
+- [Primeiros Passos com o Widget Embedded](https://developers.clicksign.com/docs/instalacao-do-widget-embedded.md)
+- [Comparativo técnico](https://developers.clicksign.com/docs/comparativo-tecnico.md): Comparativo técnico entre a API 1.9 e a API 3.0
+- [Descubra sua versão da API](https://developers.clicksign.com/docs/descubra-sua-versao-da-api.md): Como descobrir qual versão da API você está integrado
+- [FAQ: Migração](https://developers.clicksign.com/docs/faq-migracao.md): Principais dúvidas sobre a migração
+- [Guia de migração](https://developers.clicksign.com/docs/guia-de-migracao.md): Preparação conceitual completa para migração da API 1.9 para a API 3.0 com segurança e clareza
+- [Migração da API 1.9 para 3.0](https://developers.clicksign.com/docs/migracao-da-api-19-para-30.md): Está na API 1.9? Entenda os benefícios da migração para a 3.0
+
+## API Reference
+- [Criar um Aceite via Whatsapp](https://developers.clicksign.com/reference/api-criar-aceite-whatsapp.md)
+- [Listar Aceites via Whastapp](https://developers.clicksign.com/reference/api-listar-aceites-via-whatsapp.md)
+- [Campos e regras de Negócio](https://developers.clicksign.com/reference/campos-e-regras-de-negócio.md)
+- [Editar um Aceite via Whatsapp](https://developers.clicksign.com/reference/editar-um-aceite-via-whatsapp.md)
+- [Aceite por WhatsApp](https://developers.clicksign.com/reference/aceite-por-whatsapps.md)
+- [Visualizar um Aceite via Whatsapp](https://developers.clicksign.com/reference/visualizar-um-aceite-via-whatsapp.md)
+- [Fluxo da Assinatura Presencial](https://developers.clicksign.com/reference/fluxo-completo-da-assinatura-presencial.md): Resumo do Fluxo Completo da Assinatura Presencial
+- [Criar evento com imagem para o documento](https://developers.clicksign.com/reference/criar-evento-com-imagem-para-o-documento.md): Adicionar um Evento de Imagem ao Documento.
+- [Criar evento customizado para o documento](https://developers.clicksign.com/reference/criar-evento-customizado.md): Adicionar um Evento Customizado de Token ao Documento.
+- [Eventos de um Documento](https://developers.clicksign.com/reference/eventos-de-um-documento.md): Listar eventos de um Documento do Envelope
+- [Eventos de Documentos do Envelope](https://developers.clicksign.com/reference/eventos-do-envelope.md): Listar eventos dos Documentos do Envelope
+- [Eventos](https://developers.clicksign.com/reference/api-eventos.md): Explore Nossos Endpoints: Eventos de Documento e Envelope
+- [Criar Modelo](https://developers.clicksign.com/reference/api-criar-modelo.md): Referência para criação de modelos.
+- [Editar Modelo](https://developers.clicksign.com/reference/api-editar-modelo.md): Referência para atualização de modelos.
+- [Excluir Modelo](https://developers.clicksign.com/reference/api-excluir-modelo.md): Referência para exclusão de um modelo.
+- [Listar Modelos](https://developers.clicksign.com/reference/api-listar-modelos.md): Lista todos os Modelos de sua conta.
+- [Detalhes do Modelo](https://developers.clicksign.com/reference/api-visualizar-modelo.md): Referência para detalhes de um modelo.
+- [Modelos](https://developers.clicksign.com/reference/api-modelos.md): Explore Nossos Endpoints: CRUD do Modelos
+- [Campos e Regras de Negócio](https://developers.clicksign.com/reference/modelo-campos-e-regras-de-negocio.md)
+- [Criação e Exclusão de Requisitos](https://developers.clicksign.com/reference/bulk-requirements.md)
+- [Operações de Requisitos em Massa](https://developers.clicksign.com/reference/operações-em-massa.md): Endpoint para realização de criação ou exclusão de requisitos em massa.
+- [Detalhes de uma Pasta](https://developers.clicksign.com/reference/api-detalhes-da-pasta.md): Listar subpastas de uma pasta
+- [Listar Pastas](https://developers.clicksign.com/reference/api-listar-pastas.md): Listar Pastas
+- [Criar Pasta](https://developers.clicksign.com/reference/criar-pasta.md): Criar Pastas
+- [Pastas](https://developers.clicksign.com/reference/pastas.md)
+- [Criar termo de assinatura automática](https://developers.clicksign.com/reference/api-criar-termo.md): Criar um termo de assinatura automática para um determinado signatário
+- [Termo Assinatura Automática](https://developers.clicksign.com/reference/termo-assinatura-automatica.md)
+- [Criar Webhook](https://developers.clicksign.com/reference/api-criar-webhook.md): Adicionar um Webhook a sua conta.
+- [Detalhes do Webhook](https://developers.clicksign.com/reference/api-detalhes-do-webhook.md): Visualizar Webhook
+- [Editar Webhook](https://developers.clicksign.com/reference/api-editar-webhook.md)
+- [Excluir Webhook](https://developers.clicksign.com/reference/api-excluir-webhook.md): Excluir webhook.
+- [Listar Webhooks](https://developers.clicksign.com/reference/api-listar-webhooks.md): Listar Webhooks
+- [Webhooks](https://developers.clicksign.com/reference/webhooks.md): Explore Nossos Endpoints: CRUD de Webhooks
+- [Criar Documento por Duplicar](https://developers.clicksign.com/reference/api-duplicar-documento.md): Adicionar um Documento ao Envelope a partir de um documento existente.
+- [Excluir Documento](https://developers.clicksign.com/reference/api-excluir-documento.md): Excluir Documento que esteja com estado em rascunho (draft)
+- [Listar Documentos](https://developers.clicksign.com/reference/api-listar-documentos.md): Listar Documentos de um Envelope
+- [Criar Documento por Upload](https://developers.clicksign.com/reference/api-upload-documentos.md): Adicionar um Documento ao Envelope a partir do base64 de um arquivo.
+- [Criar Documento por Modelo](https://developers.clicksign.com/reference/criar-documento-por-modelo.md): Adicionar um Documento ao Envelope a partir de um Modelo/Template.
+- [Detalhes do Documento](https://developers.clicksign.com/reference/detalhes-do-documento.md): Visualizar estado atual do Documento
+- [Campos e Regras de Negócio](https://developers.clicksign.com/reference/documento-campos-e-regras-de-negocio.md)
+- [Editar Documento](https://developers.clicksign.com/reference/editar-documento.md): Cancelar ou Finalizar um Documento.
+- [Documentos](https://developers.clicksign.com/reference/api-documentos.md): Explore Nossos Endpoints: CRUD do Documento de um Envelope
+- [Criar Envelope](https://developers.clicksign.com/reference/api-criar-envelope.md): Setup do envelope
+- [Detalhes do Envelope](https://developers.clicksign.com/reference/api-detalhes-do-envelope.md): Visualizar estado atual do envelope
+- [Ativar e Editar Envelope](https://developers.clicksign.com/reference/api-editar-envelope.md): Ativar ou atualizar configurações de um envelope. <br> Para ativar um envelope na plataforma, cada signatário deve possuir pelo menos um critério de autenticação configurado.  Em caso de dúvidas recomendamos a leitura do <Anchor target="_blank" href="https://developers.clicksign.com/docs/guia-de-criacao-o-passo-a-passo-padrao">Guia de criação</Anchor>
+- [Excluir Envelope](https://developers.clicksign.com/reference/api-excluir-envelope.md): Excluir envelopes que estejam com estado em rascunho (draft)
+- [Listar Envelopes](https://developers.clicksign.com/reference/api-listar-envelopes.md): Listar e consultar envelopes
+- [Campos e Regras de Negócio](https://developers.clicksign.com/reference/envelope-campos-e-regras-de-negocio.md)
+- [Envelope](https://developers.clicksign.com/reference/api-envelope.md): Explore Nossos Endpoints: CRUD do Envelope
+- [Notificar Signatários do Envelope](https://developers.clicksign.com/reference/api-notificar-envelope.md): Notificar todos os Signatários de um Envelope.
+- [Notificar um Signatário](https://developers.clicksign.com/reference/api-notificar-signatario.md): Notificar um Signatário do Envelope.
+- [Notificações](https://developers.clicksign.com/reference/api-notificacoes.md): Explore Nossos Endpoints de Notificações
+- [Campos e Regras de Negócio](https://developers.clicksign.com/reference/notificacao-campos-e-regras-de-negocio.md)
+- [Excluir Requisito](https://developers.clicksign.com/reference/api-excluir-requisito.md): Excluir requisitos, caso não tenha iniciado o processo de assinatura.
+- [Listar Requisitos](https://developers.clicksign.com/reference/api-listar-requisitos.md): Listar Requisitos de um Envelope
+- [Criar Requisito de Autenticação](https://developers.clicksign.com/reference/criar-requisito-de-autenticacao.md): Criar Requisito de Autenticação, relacionando um signatário a um documento.<br>Em caso de falhas consulte a <Anchor target="_blank" href="https://developers.clicksign.com/docs/veja-como-funciona-na-pr%C3%A1tica">documentação teórica informando o passo a passo.</Anchor><br>Ainda ficou com dúvidas? <Anchor target="_blank" href="https://www.clicksign.com/suporte">Entre em contato com o suporte.</Anchor>
+- [Criar Requisito de Rubrica](https://developers.clicksign.com/reference/criar-requisito-de-rubrica.md): Criar Requisito de Rubrica, relacionando um signatário a um documento.<br>Em caso de falhas consulte a <Anchor target="_blank" href="https://developers.clicksign.com/docs/veja-como-funciona-na-pr%C3%A1tica">documentação teórica informando o passo a passo.</Anchor><br>Ainda ficou com dúvidas? <Anchor target="_blank" href="https://www.clicksign.com/suporte">Entre em contato com o suporte.</Anchor>
+- [Criar Requisito de Qualificação](https://developers.clicksign.com/reference/criar-requisito-qualificacao.md): Criar Requisito de Qualificação, relacionando um signatário a um documento.<br>Em caso de falhas consulte a <Anchor target="_blank" href="https://developers.clicksign.com/docs/veja-como-funciona-na-pr%C3%A1tica">documentação teórica informando o passo a passo.</Anchor><br>Ainda ficou com dúvidas? <Anchor target="_blank" href="https://www.clicksign.com/suporte">Entre em contato com o suporte.</Anchor>
+- [Detalhes do Requisito](https://developers.clicksign.com/reference/detalhes-do-requisito.md): Visualizar estado atual do Requisito.
+- [Requisitos](https://developers.clicksign.com/reference/api-requisitos.md): Explore Nossos Endpoints para Requisitos de um Envelope.
+- [Criar Signatário](https://developers.clicksign.com/reference/api-criar-signatario.md): Adicionar um Signatário ao Envelope.
+- [Detalhes do Signatário](https://developers.clicksign.com/reference/api-detalhes-do-signatario.md): Visualizar estado atual do Signatário.
+- [Excluir Signatário](https://developers.clicksign.com/reference/api-excluir-signatario.md): Excluir signatários que não tenha iniciado o processo de assinatura.
+- [Listar Signatários](https://developers.clicksign.com/reference/api-listar-signatarios.md): Listar Signatários de um Envelope
+- [Signatários](https://developers.clicksign.com/reference/api-signatarios.md): Explore Nossos Endpoints: CRUD do Signatário de um Envelope
+- [Campos e Regras de Negócio](https://developers.clicksign.com/reference/signatario-campos-e-regras-de-negocio.md)
+- [Criar Observador da Assinatura](https://developers.clicksign.com/reference/api-criar-observadores.md): Criar Observador
+- [Excluir Observador](https://developers.clicksign.com/reference/api-excluir-observador.md): Excluir um observador
+- [Listar Observadores do Envelope](https://developers.clicksign.com/reference/api-listar-observadores.md): Listar Observadores de um Envelope
+- [Observadores de Assinaturas](https://developers.clicksign.com/reference/observador-de-assinaturas.md)
+- [Campos e Regras de Negócio](https://developers.clicksign.com/reference/observador-campos-e-regras-de-negocio.md)
+- [Criar Membro](https://developers.clicksign.com/reference/api-criar-membro.md)
+- [Deletar Membro](https://developers.clicksign.com/reference/api-deletar-membro.md)
+- [Editar Membro](https://developers.clicksign.com/reference/api-editar-membro.md)
+- [Listar Membros da Conta](https://developers.clicksign.com/reference/api-listar-membros.md)
+- [Membros](https://developers.clicksign.com/reference/api-membros.md): Relação de Usuário com Conta
+- [Campos e Regras de Negócio](https://developers.clicksign.com/reference/membro-campos-e-regras-de-negocio.md)
+- [Criar Usuário](https://developers.clicksign.com/reference/api-criar-usuario.md): Cadastrar um novo usuário
+- [Detalhes do Usuário](https://developers.clicksign.com/reference/api-detalhes-usuario.md): Consultar detalhes do usuário
+- [Listar Usuários](https://developers.clicksign.com/reference/api-listar-usuarios.md): Listar e consultar usuários
+- [Usuários](https://developers.clicksign.com/reference/api-usuarios.md)
+- [Campos e Regras de Negócio](https://developers.clicksign.com/reference/usuario-campos-e-regras-de-negocio.md)
+- [Comece agora com a API 3.0 (Envelope)](https://developers.clicksign.com/reference/comece-agora.md): Desbrave o Poder da API de Envelope!
+
+## Recipes
+- [Adicionar Documento ao Envelope](https://developers.clicksign.com/recipes/adicionar-documento-ao-envelope.md)
+- [Assinatura presencial](https://developers.clicksign.com/recipes/assinatura-presencial.md)
+- [Criação e Configuração do Envelope](https://developers.clicksign.com/recipes/criação-e-configuração-do-envelope.md)
+- [Criando Documento a partir de um Modelo](https://developers.clicksign.com/recipes/criando-documento-a-partir-de-um-modelo.md)

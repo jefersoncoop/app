@@ -208,6 +208,7 @@ export default function UploadZone({ proposalId, docType, label, description, on
                 </div>
                 {status === 'success' && (
                     <button
+                        type="button"
                         onClick={handleDelete}
                         className="p-2 text-gray-400 hover:text-red-500 transition-colors"
                         title="Excluir arquivo"
@@ -260,7 +261,7 @@ export default function UploadZone({ proposalId, docType, label, description, on
                 <div className="h-32 flex flex-col justify-center items-center bg-red-50 rounded-xl border border-red-100">
                     <AlertCircle className="text-red-500 w-8 h-8 mb-2" />
                     <p className="text-red-800 font-bold text-sm">Erro no envio</p>
-                    <button onClick={() => setStatus('idle')} className="text-xs text-red-600 underline mt-2">Tentar novamente</button>
+                    <button type="button" onClick={() => setStatus('idle')} className="text-xs text-red-600 underline mt-2">Tentar novamente</button>
                 </div>
             )}
         </div>

@@ -2,7 +2,7 @@
 
 import { getAdminDb } from "@/lib/firebase-admin";
 import { proposalSchema, ProposalFormData } from "@/lib/schemas/proposal-schema";
-import { randomUUID } from 'crypto';
+import { createHash, randomInt, randomUUID } from 'crypto';
 import { getCampaignById } from "./campaign-actions";
 
 export type SubmitResult = {
@@ -13,6 +13,23 @@ export type SubmitResult = {
     existingProposal?: any;
     uploadToken?: string;
 };
+
+type WhatsappVerificationResult = {
+    success: boolean;
+    message?: string;
+    verified?: boolean;
+};
+
+function normalizePhone(phone: string) {
+    const phoneDigits = (phone || "").replace(/\D/g, '');
+    return phoneDigits.startsWith('55') && phoneDigits.length > 11
+        ? phoneDigits
+        : `55${phoneDigits}`;
+}
+
+function hashWhatsappCode(code: string) {
+    return createHash('sha256').update(code).digest('hex');
+}
 
 export async function checkExistingProposalByCPF(cpf: string): Promise<SubmitResult> {
     try {
@@ -34,7 +51,7 @@ export async function checkExistingProposalByCPF(cpf: string): Promise<SubmitRes
     }
 }
 
-export async function submitProposal(data: ProposalFormData): Promise<SubmitResult> {
+export async function submitProposal(data: ProposalFormData, options?: { notifyInitial?: boolean }): Promise<SubmitResult> {
     try {
         // 1. Validate data on the server
         const parsed = proposalSchema.safeParse(data);
@@ -62,55 +79,161 @@ export async function submitProposal(data: ProposalFormData): Promise<SubmitResu
         });
 
         console.log(`Proposal created. ID: ${docRef.id}`);
-        console.log(`[SIMULATION] Sending WhatsApp. Upload Link: /upload/${uploadToken}`);
 
-        // Trigger External Notification API
-        const phoneDigits = authorizedData.telefone.replace(/\D/g, '');
-        // Assume BR country code '55' if not present (simple heuristic)
-        const formattedPhone = phoneDigits.startsWith('55') && phoneDigits.length > 11
-            ? phoneDigits
-            : `55${phoneDigits}`;
+        if (options?.notifyInitial !== false) {
+            const formattedPhone = normalizePhone(authorizedData.telefone);
 
-        // Fetch campaign to check sync settings and form model
-        let syncCRM = true;
-        let endpoint = "https://webatende.coopedu.com.br:3000/api/external/status_proposta";
+            // Fetch campaign to check sync settings and form model
+            let syncCRM = true;
+            let endpoint = "https://webatende.coopedu.com.br:3000/api/external/status_proposta";
 
-        if (authorizedData.campaignId && authorizedData.campaignId !== 'uncategorized') {
-            const campaign = await getCampaignById(authorizedData.campaignId);
-            if (campaign) {
-                syncCRM = campaign.syncCRM !== false; // Default true if field missing or true
-                if (campaign.formType === 'coopera') {
-                    endpoint = "https://webatende.coopedu.com.br:3000/api/external/enviodocs";
+            if (authorizedData.campaignId && authorizedData.campaignId !== 'uncategorized') {
+                const campaign = await getCampaignById(authorizedData.campaignId);
+                if (campaign) {
+                    syncCRM = campaign.syncCRM !== false; // Default true if field missing or true
+                    if (campaign.formType === 'coopera') {
+                        endpoint = "https://webatende.coopedu.com.br:3000/api/external/enviodocs";
+                    }
                 }
             }
-        }
 
-        let notificationResult: { success: boolean; message?: string } = { 
-            success: true, 
-            message: "Sincronização desativada para esta campanha" 
-        };
+            let notificationResult: { success: boolean; message?: string } = {
+                success: true,
+                message: "Sincronização desativada para esta campanha"
+            };
 
-        if (syncCRM) {
-            notificationResult = await notifyExternalService(endpoint, {
-                nome: authorizedData.nomeCompleto,
-                link: `/${uploadToken}`,
-                numero: formattedPhone
+            if (syncCRM) {
+                notificationResult = await notifyExternalService(endpoint, {
+                    nome: authorizedData.nomeCompleto,
+                    link: `/${uploadToken}`,
+                    numero: formattedPhone
+                });
+            }
+
+            await docRef.collection("notifications").add({
+                type: "initial",
+                status: notificationResult.success ? "success" : "error",
+                timestamp: new Date().toISOString(),
+                error: notificationResult.message || null,
+                payload: { nome: authorizedData.nomeCompleto, link: `/${uploadToken}`, numero: formattedPhone }
             });
         }
-
-        // Log notification in Firestore
-        await docRef.collection("notifications").add({
-            type: "initial",
-            status: notificationResult.success ? "success" : "error",
-            timestamp: new Date().toISOString(),
-            error: notificationResult.message || null,
-            payload: { nome: authorizedData.nomeCompleto, link: `/${uploadToken}`, numero: formattedPhone }
-        });
 
         return { success: true, id: docRef.id, uploadToken, message: "Proposta enviada com sucesso." };
     } catch (error) {
         console.error("Error submitting proposal:", error);
         return { success: false, message: "Erro ao salvar a proposta. Tente novamente mais tarde." };
+    }
+}
+
+export async function sendWhatsappVerificationCode(proposalId: string): Promise<WhatsappVerificationResult> {
+    try {
+        const db = getAdminDb();
+        const docRef = db.collection("proposals").doc(proposalId);
+        const doc = await docRef.get();
+
+        if (!doc.exists) return { success: false, message: "Proposta não encontrada." };
+
+        const data = doc.data() || {};
+        const formattedPhone = normalizePhone(data.telefone || "");
+        if (formattedPhone.replace(/\D/g, '').length < 12) {
+            return { success: false, message: "WhatsApp inválido para envio do código." };
+        }
+
+        const code = String(randomInt(100000, 1000000));
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+        await docRef.update({
+            whatsappVerified: false,
+            whatsappVerification: {
+                codeHash: hashWhatsappCode(code),
+                expiresAt,
+                attempts: 0,
+                sentAt: new Date().toISOString(),
+                phone: formattedPhone
+            }
+        });
+
+        const endpoint = process.env.WHATSAPP_OTP_ENDPOINT;
+        let result: { success: boolean; message?: string } = { success: true };
+
+        if (endpoint) {
+            result = await notifyWhatsappCode(endpoint, {
+                nome: data.nomeCompleto || "",
+                numero: formattedPhone,
+                codigo: code
+            });
+        } else {
+            console.log(`[DEV OTP] Código WhatsApp para ${formattedPhone}: ${code}`);
+            result = { success: true, message: "Código gerado em modo desenvolvimento. Configure WHATSAPP_OTP_ENDPOINT para envio real." };
+        }
+
+        await docRef.collection("notifications").add({
+            type: "whatsapp_verification",
+            status: result.success ? "success" : "error",
+            timestamp: new Date().toISOString(),
+            error: result.message || null,
+            payload: {
+                nome: data.nomeCompleto || "",
+                numero: formattedPhone,
+                expiresAt
+            }
+        });
+
+        return result.success
+            ? { success: true, message: "Código enviado para o WhatsApp informado." }
+            : { success: false, message: result.message || "Não foi possível enviar o código." };
+    } catch (error) {
+        console.error("Error sending WhatsApp verification code:", error);
+        return { success: false, message: "Erro ao enviar código de verificação." };
+    }
+}
+
+export async function verifyWhatsappCode(proposalId: string, code: string): Promise<WhatsappVerificationResult> {
+    try {
+        const db = getAdminDb();
+        const docRef = db.collection("proposals").doc(proposalId);
+        const doc = await docRef.get();
+
+        if (!doc.exists) return { success: false, message: "Proposta não encontrada." };
+
+        const data = doc.data() || {};
+        if (data.whatsappVerified) {
+            return { success: true, verified: true, message: "WhatsApp já validado." };
+        }
+
+        const verification = data.whatsappVerification;
+        if (!verification?.codeHash || !verification?.expiresAt) {
+            return { success: false, message: "Solicite um novo código para validar seu WhatsApp." };
+        }
+
+        if (new Date(verification.expiresAt) < new Date()) {
+            return { success: false, message: "Código expirado. Solicite um novo código." };
+        }
+
+        const attempts = Number(verification.attempts || 0);
+        if (attempts >= 5) {
+            return { success: false, message: "Muitas tentativas incorretas. Solicite um novo código." };
+        }
+
+        const cleanCode = code.replace(/\D/g, '');
+        if (hashWhatsappCode(cleanCode) !== verification.codeHash) {
+            await docRef.update({
+                "whatsappVerification.attempts": attempts + 1
+            });
+            return { success: false, message: "Código inválido. Confira o WhatsApp e tente novamente." };
+        }
+
+        await docRef.update({
+            whatsappVerified: true,
+            whatsappVerifiedAt: new Date().toISOString(),
+            "whatsappVerification.verifiedAt": new Date().toISOString()
+        });
+
+        return { success: true, verified: true, message: "WhatsApp validado com sucesso." };
+    } catch (error) {
+        console.error("Error verifying WhatsApp code:", error);
+        return { success: false, message: "Erro ao validar código." };
     }
 }
 
@@ -171,6 +294,30 @@ async function notifyExternalService(url: string, payload: { nome: string, link:
         }
     } catch (error) {
         console.error("Failed to call external API:", error);
+        return { success: false, message: error instanceof Error ? error.message : "Erro de conexão" };
+    }
+}
+
+async function notifyWhatsappCode(url: string, payload: { nome: string, numero: string, codigo: string }) {
+    try {
+        console.log(`Sending WhatsApp verification code at ${url}:`, { ...payload, codigo: "***" });
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`WhatsApp OTP API Error (${response.status}):`, errorText);
+            return { success: false, message: `Erro API (${response.status}): ${errorText}` };
+        }
+
+        return { success: true };
+    } catch (error) {
+        console.error("Failed to call WhatsApp OTP API:", error);
         return { success: false, message: error instanceof Error ? error.message : "Erro de conexão" };
     }
 }

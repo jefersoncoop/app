@@ -4,6 +4,7 @@ import { getAdminDb, getAdminStorage } from "@/lib/firebase-admin";
 import citiesData from "@/data/ibge-cities.json";
 import sharp from 'sharp';
 import convert from 'heic-convert';
+import { verifyProposalSignature } from "./clicksign-actions";
 
 function getPathFromUrl(url: string): string | null {
     try {
@@ -488,6 +489,26 @@ export async function finalizeUploads(proposalId: string) {
         const proposalData = docSnapshot.data() || {};
         const nomeCompleto = proposalData.nomeCompleto || "Nome não informado";
         const telefone = proposalData.telefone || "";
+
+        // Fetch Campaign to know the formType
+        let formType = 'coopedu';
+        if (proposalData.campaignId && proposalData.campaignId !== 'uncategorized') {
+            const campDoc = await db.collection("campaigns").doc(proposalData.campaignId).get();
+            if (campDoc.exists) {
+                formType = campDoc.data()?.formType || 'coopedu';
+            }
+        }
+
+        // Enforce Clicksign signature for coopedu type forms
+        if (formType === 'coopedu') {
+            const isSigned = await verifyProposalSignature(proposalId);
+            if (!isSigned) {
+                return {
+                    success: false,
+                    message: "A assinatura da proposta via ClickSign é obrigatória para finalizar o envio dos documentos."
+                };
+            }
+        }
 
         await docRef.update({
             status: "documents_received",

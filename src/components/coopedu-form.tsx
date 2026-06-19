@@ -4,10 +4,11 @@ import React, { useState, useEffect } from 'react';
 import { useForm, FormProvider, useFormContext } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, CheckCircle, Info, ShieldCheck, FileText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle, Info, ShieldCheck, FileText, Loader2, MessageCircle, RefreshCcw } from 'lucide-react';
 import { proposalSchema, ProposalFormData } from '@/lib/schemas/proposal-schema';
-import { submitProposal, checkExistingProposalByCPF, updateProposal } from '@/actions/proposal-actions';
+import { submitProposal, checkExistingProposalByCPF, updateProposal, sendWhatsappVerificationCode, verifyWhatsappCode } from '@/actions/proposal-actions';
 import statesCitiesData from '@/data/ibge-states-cities.json';
+import UploadManager from './upload-manager';
 
 // --- COMPONENTES AUXILIARES DE UI ---
 interface FieldProps {
@@ -160,7 +161,12 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
     const [isCheckingCPF, setIsCheckingCPF] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
     const [existingProposal, setExistingProposal] = useState<any>(null);
-    const [uploadToken, setUploadToken] = useState<string | null>(null);
+    const [proposalId, setProposalId] = useState<string | null>(null);
+    const [whatsappCode, setWhatsappCode] = useState('');
+    const [whatsappVerified, setWhatsappVerified] = useState(false);
+    const [isSendingCode, setIsSendingCode] = useState(false);
+    const [isVerifyingCode, setIsVerifyingCode] = useState(false);
+    const [whatsappMessage, setWhatsappMessage] = useState<string | null>(null);
 
     const methods = useForm<ProposalFormData>({
         resolver: zodResolver(proposalSchema),
@@ -250,14 +256,20 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
             if (existingProposal && existingProposal.id) {
                 result = await updateProposal(existingProposal.id, payload as any);
             } else {
-                result = await submitProposal(payload as any);
+                result = await submitProposal(payload as any, { notifyInitial: false });
             }
 
             if (result.success) {
-                if (result.uploadToken) {
-                    setUploadToken(result.uploadToken);
+                if (result.id) {
+                    setProposalId(result.id);
+                    setWhatsappVerified(false);
+                    setWhatsappCode('');
+                    setWhatsappMessage(null);
+                    setStep(steps.length - 1); // Jump to integrated documents journey
+                    await handleSendWhatsappCode(result.id);
+                } else {
+                    setSubmitError("Proposta salva, mas não foi possível iniciar a validação do WhatsApp.");
                 }
-                setStep(steps.length - 1); // Jump to success step
             } else {
                 setSubmitError(result.message || "Erro ao enviar.");
             }
@@ -266,6 +278,54 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
             setSubmitError("Erro de conexão.");
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const handleSendWhatsappCode = async (targetProposalId = proposalId) => {
+        if (!targetProposalId) return;
+
+        setIsSendingCode(true);
+        setWhatsappMessage(null);
+        setSubmitError(null);
+        try {
+            const result = await sendWhatsappVerificationCode(targetProposalId);
+            if (result.success) {
+                setWhatsappMessage(result.message || "Código enviado para seu WhatsApp.");
+            } else {
+                setSubmitError(result.message || "Não foi possível enviar o código.");
+            }
+        } catch (err) {
+            console.error("WhatsApp code send error:", err);
+            setSubmitError("Erro de conexão ao enviar código.");
+        } finally {
+            setIsSendingCode(false);
+        }
+    };
+
+    const handleVerifyWhatsappCode = async () => {
+        if (!proposalId) return;
+
+        const cleanCode = whatsappCode.replace(/\D/g, '');
+        if (cleanCode.length !== 6) {
+            setSubmitError("Digite o código de 6 dígitos enviado para seu WhatsApp.");
+            return;
+        }
+
+        setIsVerifyingCode(true);
+        setSubmitError(null);
+        try {
+            const result = await verifyWhatsappCode(proposalId, cleanCode);
+            if (result.success && result.verified) {
+                setWhatsappVerified(true);
+                setWhatsappMessage("WhatsApp validado. Agora envie seus documentos.");
+            } else {
+                setSubmitError(result.message || "Código inválido.");
+            }
+        } catch (err) {
+            console.error("WhatsApp code verification error:", err);
+            setSubmitError("Erro de conexão ao validar código.");
+        } finally {
+            setIsVerifyingCode(false);
         }
     };
 
@@ -391,10 +451,18 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                                     {existingProposal.status === 'pending_documents' && existingProposal.uploadToken && (
                                                         <button
                                                             type="button"
-                                                            onClick={() => window.location.href = `/upload/${existingProposal.uploadToken}`}
+                                                            onClick={async () => {
+                                                                setProposalId(existingProposal.id);
+                                                                setWhatsappVerified(Boolean(existingProposal.whatsappVerified));
+                                                                setWhatsappCode('');
+                                                                setStep(steps.length - 1);
+                                                                if (!existingProposal.whatsappVerified) {
+                                                                    await handleSendWhatsappCode(existingProposal.id);
+                                                                }
+                                                            }}
                                                             className="w-full bg-white border-2 border-[#002B49] text-[#002B49] py-3 rounded-xl font-bold hover:bg-gray-50 transition-colors"
                                                         >
-                                                            ENVIAR DOCUMENTAÇÃO PENDENTE
+                                                            CONTINUAR DOCUMENTAÇÃO
                                                         </button>
                                                     )}
                                                 </div>
@@ -699,32 +767,88 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                     </div>
                                 )}
 
-                                {/* TELA: SUCESSO (100%) */}
+                                {/* TELA: VALIDAÇÃO DE WHATSAPP + DOCUMENTOS (100%) */}
                                 {step === steps.length - 1 && (
-                                    <div className="text-center space-y-6 py-10">
-                                        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="flex justify-center">
-                                            <CheckCircle size={100} className="text-green-500" />
-                                        </motion.div>
-                                        <h2 className="text-3xl font-black text-[#002B49]">Obrigado!</h2>
-                                        <p className="text-xl">Sua ficha foi enviada com sucesso.</p>
-                                        <div className="bg-green-50 p-6 rounded-2xl border-2 border-green-200">
-                                            <p className="text-green-800 font-bold">Verifique seu WhatsApp</p>
-                                            <p className="text-green-700 text-sm">Enviamos um link exclusivo para você anexar seus documentos.</p>
-                                        </div>
+                                    <div className="space-y-8 py-8">
+                                        {!whatsappVerified ? (
+                                            <div className="text-center space-y-6">
+                                                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="flex justify-center">
+                                                    <div className="bg-green-100 rounded-full p-6">
+                                                        <MessageCircle size={64} className="text-green-600" />
+                                                    </div>
+                                                </motion.div>
+                                                <div>
+                                                    <h2 className="text-3xl font-black text-[#002B49]">Valide seu WhatsApp</h2>
+                                                    <p className="text-gray-600 mt-2">
+                                                        Enviamos um código de 6 dígitos para o número informado. Essa validação protege sua assinatura e evita que a proposta seja enviada para um WhatsApp incorreto.
+                                                    </p>
+                                                </div>
 
-                                        {/*uploadToken && (
-                                            <button
-                                                type="button"
-                                                onClick={() => window.location.href = `/upload/${uploadToken}`}
-                                                className="bg-[#CCFF00] text-[#002B49] w-full py-4 rounded-xl font-bold hover:bg-[#b3e600] transition-colors mt-6 shadow-md"
-                                            >
-                                                ENVIAR DOCUMENTAÇÃO AGORA
-                                            </button>
-                                        )*/}
+                                                {whatsappMessage && (
+                                                    <div className="bg-green-50 p-4 rounded-2xl border border-green-200 text-green-800 text-sm font-semibold">
+                                                        {whatsappMessage}
+                                                    </div>
+                                                )}
 
-                                        <button type="button" onClick={() => window.location.reload()} className="bg-transparent border-2 border-[#002B49] text-[#002B49] px-8 py-3 rounded-full font-bold mt-4 hover:bg-gray-50 transition-colors">
-                                            Novo Cadastro
-                                        </button>
+                                                <div className="space-y-3 text-left">
+                                                    <label className="text-lg font-bold text-[#002B49] block">Código recebido</label>
+                                                    <input
+                                                        value={whatsappCode}
+                                                        onChange={(e) => setWhatsappCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                                        inputMode="numeric"
+                                                        autoComplete="one-time-code"
+                                                        placeholder="000000"
+                                                        className="w-full p-4 border-2 rounded-xl text-3xl text-center tracking-[0.35em] font-black transition-all border-gray-200 focus:border-[#CCFF00] focus:ring-2 focus:ring-[#CCFF00] focus:outline-none"
+                                                    />
+                                                </div>
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSendWhatsappCode()}
+                                                        disabled={isSendingCode || !proposalId}
+                                                        className="border-2 border-[#002B49] text-[#002B49] py-4 rounded-xl font-black flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                                    >
+                                                        {isSendingCode ? <Loader2 className="animate-spin" size={20} /> : <RefreshCcw size={20} />}
+                                                        REENVIAR
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleVerifyWhatsappCode}
+                                                        disabled={isVerifyingCode || !proposalId}
+                                                        className="bg-[#CCFF00] text-[#002B49] py-4 rounded-xl font-black flex items-center justify-center gap-2 hover:bg-[#b3e600] transition-colors disabled:opacity-50"
+                                                    >
+                                                        {isVerifyingCode ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle size={20} />}
+                                                        VALIDAR
+                                                    </button>
+                                                </div>
+
+                                                <button type="button" onClick={() => window.location.reload()} className="bg-transparent text-gray-500 px-8 py-3 rounded-full font-bold hover:text-[#002B49] transition-colors">
+                                                    Novo Cadastro
+                                                </button>
+                                            </div>
+                                        ) : proposalId ? (
+                                            <div className="space-y-6">
+                                                <div className="text-center space-y-3">
+                                                    <div className="flex justify-center">
+                                                        <CheckCircle size={72} className="text-green-500" />
+                                                    </div>
+                                                    <h2 className="text-3xl font-black text-[#002B49]">WhatsApp validado</h2>
+                                                    <p className="text-gray-600">
+                                                        Agora envie seus documentos para seguir para a assinatura da proposta.
+                                                    </p>
+                                                </div>
+                                                <UploadManager
+                                                    proposalId={proposalId}
+                                                    userName={methods.getValues('nomeCompleto')}
+                                                    formType="coopedu"
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div className="bg-red-50 p-6 rounded-2xl border border-red-100 text-red-800 text-center">
+                                                Não foi possível localizar sua proposta para continuar o envio dos documentos.
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </motion.div>

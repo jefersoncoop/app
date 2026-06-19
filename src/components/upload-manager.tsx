@@ -3,8 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import UploadZone from './upload-interface';
 import { finalizeUploads, getProposalDocuments } from '@/actions/document-actions';
-import { CheckCircle, Send, Loader2, AlertCircle, HardDrive } from 'lucide-react';
+import { CheckCircle, Send, Loader2, AlertCircle, HardDrive, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getOrCreateProposalSignature, getProposalSignatureStatus } from '@/actions/clicksign-actions';
 
 interface UploadManagerProps {
     proposalId: string;
@@ -18,6 +19,13 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
     const [loadingExisting, setLoadingExisting] = useState(true);
     const [isFinalizing, setIsFinalizing] = useState(false);
     const [isFinished, setIsFinished] = useState(false);
+
+    // Clicksign signature states
+    const [showSignature, setShowSignature] = useState(false);
+    const [signatureLoading, setSignatureLoading] = useState(false);
+    const [signatureError, setSignatureError] = useState<string | null>(null);
+    const [signatureRequested, setSignatureRequested] = useState(false);
+    const [isPollingSignature, setIsPollingSignature] = useState(false);
 
     const REQUIRED_DOCS = [
         { id: 'identidade_frente', label: 'Documento de Identidade com CPF *', desc: 'Frente do documento' },
@@ -66,6 +74,49 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
         }
         loadDocs();
     }, [proposalId]);
+
+    useEffect(() => {
+        if (!showSignature || !signatureRequested || isFinished || formType !== 'coopedu') return;
+
+        let cancelled = false;
+        let inFlight = false;
+
+        const checkStoredSignatureStatus = async () => {
+            if (inFlight || cancelled) return;
+            inFlight = true;
+            setIsPollingSignature(true);
+
+            try {
+                const statusRes = await getProposalSignatureStatus(proposalId);
+                if (cancelled) return;
+
+                if (statusRes.success && statusRes.signed) {
+                    const finalizeRes = await finalizeUploads(proposalId);
+                    if (cancelled) return;
+
+                    if (finalizeRes.success) {
+                        setIsFinished(true);
+                        setShowSignature(false);
+                    } else {
+                        setSignatureError(finalizeRes.message || "Assinatura detectada, mas não foi possível finalizar o envio.");
+                    }
+                }
+            } catch (err) {
+                console.error("Error polling signature status:", err);
+            } finally {
+                inFlight = false;
+                if (!cancelled) setIsPollingSignature(false);
+            }
+        };
+
+        checkStoredSignatureStatus();
+        const interval = window.setInterval(checkStoredSignatureStatus, 5000);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [showSignature, signatureRequested, isFinished, formType, proposalId]);
 
     const getDocLabel = (id: string): string => {
         const allDocs = [...REQUIRED_DOCS, ...OPTIONAL_DOCS];
@@ -117,13 +168,62 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
 
     const handleFinalize = async () => {
         setIsFinalizing(true);
+        setSignatureError(null);
         try {
             const res = await finalizeUploads(proposalId);
             if (res.success) {
                 setIsFinished(true);
+            } else {
+                if (formType === 'coopedu') {
+                    setSignatureError(res.message || "Assinatura não detectada. Por favor, assine a proposta antes de finalizar.");
+                } else {
+                    alert(res.message || "Erro ao finalizar envio.");
+                }
             }
         } catch (error) {
             console.error(error);
+            setSignatureError("Erro de rede ao finalizar envio.");
+        } finally {
+            setIsFinalizing(false);
+        }
+    };
+
+    const handleStartSignature = async () => {
+        setSignatureLoading(true);
+        setSignatureError(null);
+        setShowSignature(true);
+        try {
+            const res = await getOrCreateProposalSignature(proposalId, {
+                requireWhatsappVerified: true,
+                autoResendWhatsapp: true
+            });
+            if (res.success) {
+                // Envelope activated → ClickSign sends WhatsApp to signer automatically
+                setSignatureRequested(true);
+            } else {
+                setSignatureError(res.message || "Erro ao gerar proposta de assinatura.");
+            }
+        } catch (err) {
+            console.error("Error starting signature:", err);
+            setSignatureError("Erro de conexão ao carregar módulo de assinatura.");
+        } finally {
+            setSignatureLoading(false);
+        }
+    };
+
+    const handleCheckSignature = async () => {
+        setIsFinalizing(true);
+        setSignatureError(null);
+        try {
+            const res = await finalizeUploads(proposalId);
+            if (res.success) {
+                setIsFinished(true);
+            } else {
+                setSignatureError(res.message || "Assinatura ainda não detectada. Conclua a assinatura no link enviado pelo WhatsApp.");
+            }
+        } catch (error) {
+            console.error(error);
+            setSignatureError("Erro de rede ao verificar assinatura.");
         } finally {
             setIsFinalizing(false);
         }
@@ -159,6 +259,7 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
                 </p>
                 <div className="pt-6">
                     <button
+                        type="button"
                         onClick={() => window.close()}
                         className="bg-[#002B49] text-white px-8 py-4 rounded-xl font-bold hover:bg-[#001f35] transition-all"
                     >
@@ -166,6 +267,126 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
                     </button>
                 </div>
             </motion.div>
+        );
+    }
+
+    if (showSignature) {
+        return (
+            <div className="space-y-6">
+                <div className="bg-white p-8 rounded-3xl shadow-md border border-gray-100 text-center space-y-6">
+                    <h3 className="text-2xl font-black text-[#002B49] uppercase italic tracking-tighter border-b-2 border-[#CCFF00] pb-2">
+                        Assinatura da Proposta
+                    </h3>
+
+                    {/* Loading: generating envelope */}
+                    {signatureLoading && (
+                        <div className="h-48 flex flex-col justify-center items-center space-y-4">
+                            <Loader2 className="animate-spin text-[#002B49]" size={40} />
+                            <p className="text-gray-500 font-bold text-sm">Gerando sua proposta de adesão...</p>
+                        </div>
+                    )}
+
+                    {/* Error state */}
+                    {signatureError && (
+                        <div className="bg-red-50 p-6 rounded-2xl border border-red-100 text-red-800 text-sm space-y-4">
+                            <p className="font-bold flex items-center justify-center gap-2 text-red-700">
+                                <AlertCircle size={18} /> Atenção
+                            </p>
+                            <p>{signatureError}</p>
+                            <div className="flex justify-center gap-4">
+                                <button
+                                    type="button"
+                                    onClick={() => { setShowSignature(false); setSignatureError(null); }}
+                                    className="bg-transparent border-2 border-[#002B49] text-[#002B49] px-6 py-2 rounded-xl font-bold text-xs hover:bg-gray-50 transition-colors"
+                                >
+                                    VOLTAR
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleCheckSignature}
+                                    disabled={isFinalizing}
+                                    className="bg-[#002B49] text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-[#001f35] transition-colors disabled:opacity-50 flex items-center gap-2"
+                                >
+                                    {isFinalizing ? <Loader2 className="animate-spin" size={14} /> : null}
+                                    JÁ ASSINEI, VERIFICAR
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Success: envelope activated, waiting for WhatsApp signature */}
+                    {!signatureLoading && !signatureError && signatureRequested && (
+                        <div className="space-y-6">
+                            {/* WhatsApp sent indicator */}
+                            <div className="flex flex-col items-center gap-4 py-4">
+                                <div className="bg-green-100 rounded-full p-5">
+                                    <MessageCircle className="text-green-600" size={40} />
+                                </div>
+                                <div>
+                                    <p className="text-[#002B49] font-black text-lg">Proposta enviada via WhatsApp!</p>
+                                    <p className="text-gray-500 text-sm mt-1">
+                                        Você receberá em instantes um link no seu WhatsApp para assinar a proposta de adesão.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Step by step instructions */}
+                            <div className="bg-[#002B49] text-white p-5 rounded-2xl text-left space-y-3">
+                                <p className="font-bold text-sm uppercase tracking-wide text-[#CCFF00]">Como assinar:</p>
+                                <ol className="space-y-2 text-sm list-none">
+                                    <li className="flex items-start gap-3">
+                                        <span className="bg-[#CCFF00] text-[#002B49] font-black rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 text-xs">1</span>
+                                        <span>Abra o <strong>WhatsApp</strong> e clique no link enviado pela Clicksign</span>
+                                    </li>
+                                    <li className="flex items-start gap-3">
+                                        <span className="bg-[#CCFF00] text-[#002B49] font-black rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 text-xs">2</span>
+                                        <span>Insira o <strong>código de verificação</strong> recebido no WhatsApp</span>
+                                    </li>
+                                    <li className="flex items-start gap-3">
+                                        <span className="bg-[#CCFF00] text-[#002B49] font-black rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 text-xs">3</span>
+                                        <span>Tire uma <strong>selfie segurando seu documento</strong> para validação de identidade</span>
+                                    </li>
+                                    <li className="flex items-start gap-3">
+                                        <span className="bg-[#CCFF00] text-[#002B49] font-black rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 text-xs">4</span>
+                                        <span>Assine a proposta e volte aqui para <strong>confirmar a conclusão</strong></span>
+                                    </li>
+                                </ol>
+                            </div>
+
+                            <div className="bg-lime-50 border border-lime-200 text-[#002B49] rounded-2xl p-4 text-sm flex items-center justify-center gap-2">
+                                {isPollingSignature ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
+                                <span className="font-bold">Estamos verificando automaticamente a confirmação da assinatura.</span>
+                            </div>
+
+                            {/* Action buttons */}
+                            <div className="flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => { setShowSignature(false); setSignatureRequested(false); }}
+                                    className="w-1/3 py-4 rounded-xl border-2 border-gray-300 text-gray-500 font-bold text-sm hover:bg-gray-50 transition-colors"
+                                >
+                                    VOLTAR
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleCheckSignature}
+                                    disabled={isFinalizing}
+                                    className="w-2/3 py-4 rounded-xl bg-[#CCFF00] text-[#002B49] font-black text-sm flex items-center justify-center gap-2 hover:bg-[#b8e600] transition-colors active:scale-95 disabled:opacity-50 shadow-lg"
+                                >
+                                    {isFinalizing ? (
+                                        <Loader2 className="animate-spin" size={20} />
+                                    ) : (
+                                        <>
+                                            <CheckCircle size={20} />
+                                            JÁ ASSINEI, FINALIZAR
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
         );
     }
 
@@ -277,7 +498,8 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
                         className="pt-6 pb-10"
                     >
                         <button
-                            onClick={handleFinalize}
+                            type="button"
+                            onClick={formType === 'coopedu' ? handleStartSignature : handleFinalize}
                             disabled={isFinalizing}
                             className={`w-full py-5 rounded-2xl font-black text-xl flex items-center justify-center gap-3 transition-all shadow-lg ${isFinalizing ? 'bg-gray-400' : (formType === 'coopera' ? 'bg-[#002B49] text-white hover:bg-[#001f35]' : 'bg-[#CCFF00] text-[#002B49] hover:bg-[#b8e600]')
                                 } active:scale-95`}
@@ -287,7 +509,7 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
                             ) : (
                                 <>
                                     <Send size={24} />
-                                    FINALIZAR ENVIO
+                                    {formType === 'coopedu' ? 'ASSINAR PROPOSTA E FINALIZAR' : 'FINALIZAR ENVIO'}
                                 </>
                             )}
                         </button>
@@ -297,4 +519,3 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
         </div>
     );
 }
-

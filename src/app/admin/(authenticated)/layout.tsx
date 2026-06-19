@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { LayoutDashboard, Users, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, LogOut, FileSignature } from 'lucide-react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { logout } from '@/actions/auth-actions';
@@ -32,6 +32,10 @@ export default async function AdminLayout({
                     <Link href="/admin/proposals" className="flex items-center gap-3 p-3 rounded-lg hover:bg-white/10 transition-colors text-gray-100">
                         <Users size={20} />
                         <span className="font-bold">Propostas</span>
+                    </Link>
+                    <Link href="/admin/documents" className="flex items-center gap-3 p-3 rounded-lg hover:bg-white/10 transition-colors text-gray-100">
+                        <FileSignature size={20} />
+                        <span className="font-bold">Documentos</span>
                     </Link>
                     <div className="pt-4 border-t border-white/10 mt-4">
                         <form action={logout}>
