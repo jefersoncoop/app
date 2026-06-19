@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminDb } from '@/lib/firebase-admin';
+import { syncProposalWithCRM } from '@/actions/document-actions';
 
 /**
  * ClickSign Webhook Handler
@@ -140,12 +141,9 @@ export async function POST(req: NextRequest) {
         }
 
         const doc = snap.docs[0];
-        const currentStatus = doc.data().clicksignStatus;
-
-        if (currentStatus === 'signed') {
-            console.log(`[Webhook ClickSign] Proposal ${doc.id} already marked as signed — skipping`);
-            return NextResponse.json({ received: true, action: 'already_signed' });
-        }
+        const proposal = doc.data();
+        const currentClicksignStatus = proposal.clicksignStatus;
+        const alreadySyncedWithCRM = proposal.crmSynced === true || proposal.status === 'completed';
 
         const signedAt = firstString(
             body?.document?.finished_at,
@@ -154,16 +152,57 @@ export async function POST(req: NextRequest) {
             body?.data?.attributes?.data?.document?.finished_at
         ) || new Date().toISOString();
 
-        await doc.ref.update({
-            clicksignStatus: 'signed',
-            clicksignSignedAt: signedAt
-        });
+        if (currentClicksignStatus !== 'signed') {
+            const signedUpdate: FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData> = {
+                clicksignStatus: 'signed',
+                clicksignSignedAt: signedAt,
+                documentsSubmittedAt: proposal.documentsSubmittedAt || signedAt
+            };
 
-        console.log(`[Webhook ClickSign] Marked proposal ${doc.id} as signed (${lookupField}=${lookupValue})`);
+            if (proposal.status === 'pending_documents') {
+                signedUpdate.status = 'documents_received';
+            }
+
+            await doc.ref.update(signedUpdate);
+
+            console.log(`[Webhook ClickSign] Marked proposal ${doc.id} as signed (${lookupField}=${lookupValue})`);
+        } else {
+            console.log(`[Webhook ClickSign] Proposal ${doc.id} already marked as signed`);
+        }
+
+        if (alreadySyncedWithCRM) {
+            console.log(`[Webhook ClickSign] Proposal ${doc.id} already synced with CRM - skipping CRM sync`);
+            return NextResponse.json({
+                received: true,
+                action: currentClicksignStatus === 'signed' ? 'already_signed' : 'signed',
+                crmAction: 'already_synced',
+                proposalId: doc.id,
+                envelopeId,
+                documentId
+            });
+        }
+
+        const crmResult = await syncProposalWithCRM(doc.id);
+
+        if (!crmResult.success) {
+            console.error(`[Webhook ClickSign] CRM sync failed for proposal ${doc.id}: ${crmResult.message}`);
+            return NextResponse.json({
+                received: true,
+                action: currentClicksignStatus === 'signed' ? 'already_signed' : 'signed',
+                crmAction: 'crm_sync_failed',
+                crmMessage: crmResult.message,
+                proposalId: doc.id,
+                envelopeId,
+                documentId
+            });
+        }
+
+        console.log(`[Webhook ClickSign] Synced proposal ${doc.id} with CRM after signature`);
 
         return NextResponse.json({
             received: true,
             action: 'signed',
+            crmAction: 'synced',
             proposalId: doc.id,
             envelopeId,
             documentId
