@@ -1,19 +1,21 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import {
-    FileSignature, Upload, Search, CheckCircle2, XCircle, AlertTriangle,
+    FileSignature, Upload, Search, CheckCircle2, XCircle,
     Loader2, RefreshCw, Download, MessageCircle, ChevronRight, FileText,
-    Users, RotateCw, ClipboardList
+    Users, RotateCw, ClipboardList, Clock3
 } from 'lucide-react';
 import {
     findProposalsByCpfs,
     batchCreateClicksignEnvelopes,
     batchResendWhatsapp,
     batchSyncClicksignStatus,
+    getDocumentDashboardStats,
     type ProposalCpfResult,
     type BatchCreateResult,
-    type BatchResendResult
+    type BatchResendResult,
+    type DocumentDashboardStats
 } from '@/actions/clicksign-actions';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -102,12 +104,30 @@ export default function DocumentsPage() {
     const [isSearching, setIsSearching] = useState(false);
     const [reviewRows, setReviewRows] = useState<ReviewRow[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [processLog, setProcessLog] = useState<string[]>([]);
     const [results, setResults] = useState<ProcessResult[]>([]);
     const [isResending, setIsResending] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncResult, setSyncResult] = useState<{ checked: number; nowSigned: number; stillPending: number; errors: number } | null>(null);
+    const [dashboardStats, setDashboardStats] = useState<DocumentDashboardStats | null>(null);
+    const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
     const fileRef = useRef<HTMLInputElement>(null);
+
+    const loadDashboardStats = useCallback(async () => {
+        setIsLoadingDashboard(true);
+        try {
+            const stats = await getDocumentDashboardStats();
+            setDashboardStats(stats);
+        } catch (error) {
+            console.error('Erro ao carregar painel de documentos:', error);
+            setDashboardStats(null);
+        } finally {
+            setIsLoadingDashboard(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadDashboardStats();
+    }, [loadDashboardStats]);
 
     // ── CSV Upload ──────────────────────────────────────────────────────────
 
@@ -164,11 +184,9 @@ export default function DocumentsPage() {
     const handleProcess = async () => {
         if (!selectedRows.length) return;
         setIsProcessing(true);
-        setProcessLog([]);
         setResults([]);
 
         const proposalIds = selectedRows.map(r => r.proposalId!);
-        setProcessLog([`🚀 Iniciando geração de ${proposalIds.length} documentos...`]);
 
         const batchResults: BatchCreateResult[] = await batchCreateClicksignEnvelopes(proposalIds);
 
@@ -184,6 +202,7 @@ export default function DocumentsPage() {
         setResults(finalResults);
         setStep('results');
         setIsProcessing(false);
+        loadDashboardStats();
     };
 
     // ── Results / Resend ────────────────────────────────────────────────────
@@ -216,6 +235,7 @@ export default function DocumentsPage() {
         try {
             const res = await batchSyncClicksignStatus();
             setSyncResult(res);
+            await loadDashboardStats();
         } finally {
             setIsSyncing(false);
         }
@@ -269,6 +289,52 @@ export default function DocumentsPage() {
                         );
                     })}
                 </div>
+            </div>
+
+            {/* Dashboard */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                    {
+                        label: 'Propostas no sistema',
+                        value: dashboardStats?.totalProposals,
+                        icon: Users,
+                        cls: 'bg-white text-[#002B49] border-gray-100',
+                        iconCls: 'bg-[#002B49]/10 text-[#002B49]',
+                    },
+                    {
+                        label: 'Documentos criados',
+                        value: dashboardStats?.created,
+                        icon: FileSignature,
+                        cls: 'bg-white text-[#002B49] border-gray-100',
+                        iconCls: 'bg-blue-50 text-blue-600',
+                    },
+                    {
+                        label: 'Documentos assinados',
+                        value: dashboardStats?.signed,
+                        icon: CheckCircle2,
+                        cls: 'bg-white text-[#002B49] border-gray-100',
+                        iconCls: 'bg-green-50 text-green-600',
+                    },
+                    {
+                        label: 'Aguardando assinatura',
+                        value: dashboardStats?.pendingSignature,
+                        icon: Clock3,
+                        cls: 'bg-white text-[#002B49] border-gray-100',
+                        iconCls: 'bg-yellow-50 text-yellow-600',
+                    },
+                ].map(({ label, value, icon: Icon, cls, iconCls }) => (
+                    <div key={label} className={`${cls} rounded-2xl border shadow-sm p-5 flex items-center gap-4`}>
+                        <div className={`${iconCls} w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0`}>
+                            <Icon size={22} />
+                        </div>
+                        <div className="min-w-0">
+                            <p className="text-3xl font-black tracking-tight">
+                                {isLoadingDashboard ? <Loader2 className="animate-spin text-gray-300" size={26} /> : value ?? 0}
+                            </p>
+                            <p className="text-xs font-bold text-gray-500 mt-1 uppercase tracking-wide">{label}</p>
+                        </div>
+                    </div>
+                ))}
             </div>
 
             {/* ── STEP 1: Upload CSV ── */}

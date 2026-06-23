@@ -739,6 +739,35 @@ export async function batchSyncClicksignStatus(campaignId?: string): Promise<{
     return { checked: pending.length, nowSigned, stillPending, errors };
 }
 
+export interface DocumentDashboardStats {
+    totalProposals: number;
+    created: number;
+    signed: number;
+    pendingSignature: number;
+}
+
+export async function getDocumentDashboardStats(): Promise<DocumentDashboardStats> {
+    const db = getAdminDb();
+    const proposals = db.collection("proposals");
+
+    const [totalSnap, createdSnap, signedSnap] = await Promise.all([
+        proposals.count().get(),
+        proposals.where("clicksignEnvelopeId", "!=", null).count().get(),
+        proposals.where("clicksignStatus", "==", "signed").count().get(),
+    ]);
+
+    const totalProposals = totalSnap.data().count;
+    const created = createdSnap.data().count;
+    const signed = signedSnap.data().count;
+
+    return {
+        totalProposals,
+        created,
+        signed,
+        pendingSignature: Math.max(created - signed, 0),
+    };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // BATCH OPERATIONS
 // ─────────────────────────────────────────────────────────────────────────────

@@ -98,23 +98,55 @@ export async function getCampaignsWithCounts() {
 
         // Fetch counts for all campaigns in parallel
         const campaignsWithCounts = await Promise.all(campaigns.map(async (camp) => {
-            const countSnapshot = await db.collection('proposals').where('campaignId', '==', camp.id).count().get();
+            const proposalsRef = db.collection('proposals').where('campaignId', '==', camp.id);
+            const [countSnapshot, documentSnapshot, signedSnapshot] = await Promise.all([
+                proposalsRef.count().get(),
+                proposalsRef.where('clicksignEnvelopeId', '!=', null).count().get(),
+                proposalsRef.where('clicksignStatus', '==', 'signed').count().get(),
+            ]);
+
+            const documentCount = documentSnapshot.data().count;
+            const signedDocumentCount = signedSnapshot.data().count;
+
             return {
                 ...camp,
-                proposalCount: countSnapshot.data().count
+                proposalCount: countSnapshot.data().count,
+                documentCount,
+                signedDocumentCount,
+                pendingSignatureCount: Math.max(documentCount - signedDocumentCount, 0),
             };
         }));
 
         // Handle uncategorized if any
-        const uncategorizedCount = await db.collection('proposals').where('campaignId', '==', 'uncategorized').count().get();
-        const nullCount = await db.collection('proposals').where('campaignId', '==', null).count().get();
+        const uncategorizedRef = db.collection('proposals').where('campaignId', '==', 'uncategorized');
+        const nullRef = db.collection('proposals').where('campaignId', '==', null);
+        const [
+            uncategorizedCount,
+            nullCount,
+            uncategorizedDocuments,
+            nullDocuments,
+            uncategorizedSigned,
+            nullSigned,
+        ] = await Promise.all([
+            uncategorizedRef.count().get(),
+            nullRef.count().get(),
+            uncategorizedRef.where('clicksignEnvelopeId', '!=', null).count().get(),
+            nullRef.where('clicksignEnvelopeId', '!=', null).count().get(),
+            uncategorizedRef.where('clicksignStatus', '==', 'signed').count().get(),
+            nullRef.where('clicksignStatus', '==', 'signed').count().get(),
+        ]);
         const totalUncategorized = uncategorizedCount.data().count + nullCount.data().count;
+        const uncategorizedDocumentCount = uncategorizedDocuments.data().count + nullDocuments.data().count;
+        const uncategorizedSignedDocumentCount = uncategorizedSigned.data().count + nullSigned.data().count;
 
         if (totalUncategorized > 0) {
             campaignsWithCounts.push({
                 id: 'uncategorized',
                 name: 'Sem Campanha Vinculada',
                 proposalCount: totalUncategorized,
+                documentCount: uncategorizedDocumentCount,
+                signedDocumentCount: uncategorizedSignedDocumentCount,
+                pendingSignatureCount: Math.max(uncategorizedDocumentCount - uncategorizedSignedDocumentCount, 0),
                 active: true
             } as any);
         }

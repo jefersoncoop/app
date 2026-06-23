@@ -6,7 +6,7 @@ import { batchSyncProposalsWithCRM } from '@/actions/document-actions';
 import { batchResendWhatsappByCampaign } from '@/actions/clicksign-actions';
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
-import { Eye, FileText, Loader2, RefreshCw, LayoutList, Search, X, ChevronDown, ChevronUp, Trash2, SortAsc, Calendar, LinkIcon, Check, Download, Upload, FileSpreadsheet, MessageCircle } from 'lucide-react';
+import { Eye, Loader2, RefreshCw, LayoutList, Search, X, ChevronDown, ChevronUp, Trash2, SortAsc, Calendar, LinkIcon, Check, Download, Upload, FileSpreadsheet, MessageCircle, FileSignature, CheckCircle2, Clock3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Papa from 'papaparse';
 
@@ -404,8 +404,24 @@ export default function ProposalsPage() {
                                         <p className="text-sm text-gray-500">{camp.slug}</p>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-6">
-                                    <div className="text-right">
+                                <div className="flex items-center gap-4">
+                                    <div className="hidden md:grid grid-cols-4 gap-2">
+                                        {[
+                                            { label: 'Propostas', value: camp.proposalCount, icon: LayoutList, cls: 'text-[#002B49]' },
+                                            { label: 'Docs criados', value: camp.documentCount || 0, icon: FileSignature, cls: 'text-blue-600' },
+                                            { label: 'Assinados', value: camp.signedDocumentCount || 0, icon: CheckCircle2, cls: 'text-green-600' },
+                                            { label: 'Pendentes', value: camp.pendingSignatureCount || 0, icon: Clock3, cls: 'text-yellow-600' },
+                                        ].map(({ label, value, icon: Icon, cls }) => (
+                                            <div key={label} className="min-w-24 rounded-xl border border-gray-100 bg-white px-3 py-2 text-right shadow-sm">
+                                                <div className="flex items-center justify-end gap-1 text-[10px] text-gray-400 uppercase font-bold">
+                                                    <Icon size={12} className={cls} />
+                                                    {label}
+                                                </div>
+                                                <div className={`text-2xl font-black ${cls}`}>{value}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="md:hidden text-right">
                                         <div className="text-sm text-gray-500 uppercase tracking-wider font-bold">Propostas</div>
                                         <div className="text-2xl font-black text-[#002B49]">{camp.proposalCount}</div>
                                     </div>
