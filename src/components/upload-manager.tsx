@@ -26,13 +26,21 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
     const [signatureError, setSignatureError] = useState<string | null>(null);
     const [signatureRequested, setSignatureRequested] = useState(false);
     const [isPollingSignature, setIsPollingSignature] = useState(false);
+    const requiresSignature = formType === 'coopedu' || formType === 'coopera';
 
-    const REQUIRED_DOCS = [
+    const BASE_REQUIRED_DOCS = [
         { id: 'identidade_frente', label: 'Documento de Identidade com CPF *', desc: 'Frente do documento' },
         { id: 'identidade_verso', label: 'Documento de Identidade com CPF/Verso *', desc: 'Verso do documento' },
         { id: 'comprovante_pis', label: 'Comprovante do número PIS/PASEP/NIT *', desc: 'Extrato ou print do app' },
         { id: 'comprovante_residencia', label: 'Comprovante de Residência *', desc: 'Conta de luz, água ou telefone recente' },
     ];
+
+    const REQUIRED_DOCS = formType === 'coopera'
+        ? [
+            ...BASE_REQUIRED_DOCS,
+            { id: 'certidao_antecedentes_criminais', label: 'Certidão de Antecedentes Criminais *', desc: 'Certidão negativa ou documento equivalente' },
+        ]
+        : BASE_REQUIRED_DOCS;
 
     const OPTIONAL_DOCS = [
         { id: 'cnh', label: 'CNH', desc: 'Carteira Nacional de Habilitação' },
@@ -76,7 +84,7 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
     }, [proposalId]);
 
     useEffect(() => {
-        if (!showSignature || !signatureRequested || isFinished || formType !== 'coopedu') return;
+        if (!showSignature || !signatureRequested || isFinished || !requiresSignature) return;
 
         let cancelled = false;
         let inFlight = false;
@@ -116,7 +124,7 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
             cancelled = true;
             window.clearInterval(interval);
         };
-    }, [showSignature, signatureRequested, isFinished, formType, proposalId]);
+    }, [showSignature, signatureRequested, isFinished, requiresSignature, proposalId]);
 
     const getDocLabel = (id: string): string => {
         const allDocs = [...REQUIRED_DOCS, ...OPTIONAL_DOCS];
@@ -174,7 +182,7 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
             if (res.success) {
                 setIsFinished(true);
             } else {
-                if (formType === 'coopedu') {
+                if (requiresSignature) {
                     setSignatureError(res.message || "Assinatura não detectada. Por favor, assine a proposta antes de finalizar.");
                 } else {
                     alert(res.message || "Erro ao finalizar envio.");
@@ -499,9 +507,9 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
                     >
                         <button
                             type="button"
-                            onClick={formType === 'coopedu' ? handleStartSignature : handleFinalize}
+                            onClick={requiresSignature ? handleStartSignature : handleFinalize}
                             disabled={isFinalizing}
-                            className={`w-full py-5 rounded-2xl font-black text-xl flex items-center justify-center gap-3 transition-all shadow-lg ${isFinalizing ? 'bg-gray-400' : (formType === 'coopera' ? 'bg-[#002B49] text-white hover:bg-[#001f35]' : 'bg-[#CCFF00] text-[#002B49] hover:bg-[#b8e600]')
+                            className={`w-full py-5 rounded-2xl font-black text-xl flex items-center justify-center gap-3 transition-all shadow-lg ${isFinalizing ? 'bg-gray-400' : (requiresSignature ? 'bg-[#CCFF00] text-[#002B49] hover:bg-[#b8e600]' : 'bg-[#002B49] text-white hover:bg-[#001f35]')
                                 } active:scale-95`}
                         >
                             {isFinalizing ? (
@@ -509,7 +517,7 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
                             ) : (
                                 <>
                                     <Send size={24} />
-                                    {formType === 'coopedu' ? 'ASSINAR PROPOSTA E FINALIZAR' : 'FINALIZAR ENVIO'}
+                                    {requiresSignature ? 'ASSINAR PROPOSTA E FINALIZAR' : 'FINALIZAR ENVIO'}
                                 </>
                             )}
                         </button>

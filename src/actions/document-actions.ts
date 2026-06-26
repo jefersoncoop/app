@@ -499,8 +499,8 @@ export async function finalizeUploads(proposalId: string) {
             }
         }
 
-        // Enforce Clicksign signature for coopedu type forms
-        if (formType === 'coopedu') {
+        // Enforce Clicksign signature for standard multi-step forms
+        if (formType === 'coopedu' || formType === 'coopera') {
             const isSigned = await verifyProposalSignature(proposalId);
             if (!isSigned) {
                 return {

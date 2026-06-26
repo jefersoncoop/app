@@ -1,9 +1,18 @@
 import Link from 'next/link';
 import { getCampaigns } from '@/actions/campaign-actions';
-import { Plus, Edit, ExternalLink } from 'lucide-react';
+import { CalendarClock, Plus, Edit, ExternalLink } from 'lucide-react';
+
+type CampaignListItem = {
+    id: string;
+    name?: string;
+    slug?: string;
+    clientId?: string;
+    functionId?: string;
+    active?: boolean;
+};
 
 export default async function AdminCampaignsPage() {
-    const campaigns = await getCampaigns();
+    const campaigns = await getCampaigns() as CampaignListItem[];
 
     return (
         <div className="space-y-6">
@@ -26,15 +35,21 @@ export default async function AdminCampaignsPage() {
                         </tr>
                     </thead>
                     <tbody>
-                        {campaigns.map((c: any) => (
+                        {campaigns.map((c) => (
                             <tr key={c.id} className="border-b last:border-0 hover:bg-gray-50">
                                 <td className="p-4">
                                     <span className="font-bold text-[#002B49]">{c.name}</span>
                                 </td>
                                 <td className="p-4">
-                                    <div className="flex items-center gap-2 text-sm text-blue-600">
-                                        <span>/c/{c.slug}</span>
-                                        <a href={`/c/${c.slug}`} target="_blank" className="hover:underline"><ExternalLink size={14} /></a>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex items-center gap-2 text-blue-600">
+                                            <span>/c/{c.slug}</span>
+                                            <a href={`/c/${c.slug}`} target="_blank" className="hover:underline"><ExternalLink size={14} /></a>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-emerald-700">
+                                            <span>/a/{c.slug}</span>
+                                            <a href={`/a/${c.slug}`} target="_blank" className="hover:underline"><CalendarClock size={14} /></a>
+                                        </div>
                                     </div>
                                 </td>
                                 <td className="p-4 text-sm text-gray-500">
@@ -46,6 +61,9 @@ export default async function AdminCampaignsPage() {
                                     </span>
                                 </td>
                                 <td className="p-4 text-right">
+                                    <Link href={`/admin/schedules?campaignId=${c.id}`} className="inline-block p-2 text-gray-500 hover:text-[#002B49] hover:bg-gray-100 rounded-lg">
+                                        <CalendarClock size={20} />
+                                    </Link>
                                     <Link href={`/admin/campaigns/${c.id}`} className="inline-block p-2 text-gray-500 hover:text-[#002B49] hover:bg-gray-100 rounded-lg">
                                         <Edit size={20} />
                                     </Link>

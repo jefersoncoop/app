@@ -167,6 +167,7 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
     const [isSendingCode, setIsSendingCode] = useState(false);
     const [isVerifyingCode, setIsVerifyingCode] = useState(false);
     const [whatsappMessage, setWhatsappMessage] = useState<string | null>(null);
+    const formType = campaign?.formType === 'coopera' ? 'coopera' : 'coopedu';
 
     const methods = useForm<ProposalFormData>({
         resolver: zodResolver(proposalSchema),
@@ -841,7 +842,7 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                                 <UploadManager
                                                     proposalId={proposalId}
                                                     userName={methods.getValues('nomeCompleto')}
-                                                    formType="coopedu"
+                                                    formType={formType}
                                                 />
                                             </div>
                                         ) : (
