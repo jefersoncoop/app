@@ -104,7 +104,7 @@ export default function SchedulePublicForm({
                 <div className="max-w-3xl mx-auto px-6 py-8">
                     {campaign.bannerUrl && (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={campaign.bannerUrl} alt={campaign.name || 'Campanha'} className="w-full max-h-64 object-contain rounded-xl mb-6 bg-white" />
+                        <img src={campaign.bannerUrl} alt={campaign.name || 'Campanha'} className="w-full max-h-64 object-cover rounded-xl mb-6" />
                     )}
                     <p className="text-sm font-bold text-[#CCFF00] uppercase tracking-widest">Agendamento</p>
                     <h1 className="text-3xl sm:text-4xl font-black mt-2">{campaign.name}</h1>
