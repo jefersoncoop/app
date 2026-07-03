@@ -15,6 +15,16 @@ export const campaignSchema = z.object({
         }
         return val;
     }).pipe(z.array(z.string()).min(1, "Adicione pelo menos uma profissão")),
+    schools: z.union([
+        z.string(),
+        z.array(z.string())
+    ]).optional().transform((val) => {
+        if (!val) return [];
+        if (typeof val === 'string') {
+            return val.split(',').map(s => s.trim()).filter(Boolean);
+        }
+        return val;
+    }).pipe(z.array(z.string())),
     active: z.boolean().default(true),
     formType: z.enum(['coopedu', 'coopera']).default('coopedu'),
     syncCRM: z.boolean().default(true),
@@ -27,4 +37,5 @@ export interface Campaign extends CampaignFormData {
     id: string;
     createdAt: string;
     professions: string[];
+    schools: string[];
 }

@@ -20,7 +20,7 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
     const [isFinalizing, setIsFinalizing] = useState(false);
     const [isFinished, setIsFinished] = useState(false);
 
-    // Clicksign signature states
+    // Plugsign signature states
     const [showSignature, setShowSignature] = useState(false);
     const [signatureLoading, setSignatureLoading] = useState(false);
     const [signatureError, setSignatureError] = useState<string | null>(null);
@@ -206,7 +206,7 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
                 autoResendWhatsapp: true
             });
             if (res.success) {
-                // Envelope activated → ClickSign sends WhatsApp to signer automatically
+                // Request created -> our WhatsApp API sends the silent signing link.
                 setSignatureRequested(true);
             } else {
                 setSignatureError(res.message || "Erro ao gerar proposta de assinatura.");
@@ -344,7 +344,7 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
                                 <ol className="space-y-2 text-sm list-none">
                                     <li className="flex items-start gap-3">
                                         <span className="bg-[#CCFF00] text-[#002B49] font-black rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 text-xs">1</span>
-                                        <span>Abra o <strong>WhatsApp</strong> e clique no link enviado pela Clicksign</span>
+                                        <span>Abra o <strong>WhatsApp</strong> e clique no link de assinatura enviado pela COOPEDU</span>
                                     </li>
                                     <li className="flex items-start gap-3">
                                         <span className="bg-[#CCFF00] text-[#002B49] font-black rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 text-xs">2</span>

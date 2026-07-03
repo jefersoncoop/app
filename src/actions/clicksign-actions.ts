@@ -1,8 +1,15 @@
 'use server';
 
+import fs from "node:fs/promises";
+import path from "node:path";
 import { getAdminDb } from "@/lib/firebase-admin";
+import PizZip from "pizzip";
+import Docxtemplater from "docxtemplater";
 
-const DEFAULT_TEMPLATE_ID = "2b2ed8dc-9709-43ac-a323-85ab4b1f9f0b";
+const PLUGSIGN_API_URL = process.env.PLUGSIGN_API_URL || "https://app.plugsign.com.br";
+const PROPOSAL_TEMPLATE_PATH = path.join(process.cwd(), "PORPOSTAV1.docx");
+const SIGNED_STATUSES = new Set(["signed"]);
+const PENDING_STATUS = "pending";
 
 interface ClickSignResponse {
     success: boolean;
@@ -22,104 +29,342 @@ type ProposalSignatureStatus = {
     signed?: boolean;
 };
 
-/**
- * Helper to execute calls to Clicksign API v3
- */
-async function clicksignFetch(endpoint: string, options: RequestInit = {}) {
-    const apiKey = process.env.CLICKSIGN_API_KEY;
-    const apiUrl = process.env.CLICKSIGN_API_URL || "https://sandbox.clicksign.com";
+type PlugsignRequest = {
+    id?: number | string;
+    signing_key?: string;
+    document?: string;
+    status?: string;
+    update_time?: string;
+    send_time?: string;
+    url?: string;
+    link?: string;
+    signing_url?: string;
+    signature_url?: string;
+    sign_url?: string;
+};
 
-    if (!apiKey) {
-        throw new Error("CLICKSIGN_API_KEY não configurado no servidor.");
+function getPlugsignToken() {
+    const token = process.env.PLUGSIGN_API_TOKEN || process.env.PLUGSIGN_TOKEN;
+
+    if (!token) {
+        throw new Error("PLUGSIGN_API_TOKEN não configurado no servidor.");
     }
 
-    const url = `${apiUrl}${endpoint}`;
+    return token;
+}
+
+async function plugsignFetch(endpoint: string, options: RequestInit = {}) {
+    const url = `${PLUGSIGN_API_URL}${endpoint}`;
     const headers = {
-        "Content-Type": "application/vnd.api+json",
-        "Accept": "application/vnd.api+json",
-        "Authorization": apiKey,
+        "Accept": "application/json",
+        "Authorization": getPlugsignToken(),
         ...options.headers
     };
 
-    console.log(`[Clicksign Request] ${options.method || 'GET'} ${url}`);
+    console.log(`[Plugsign Request] ${options.method || "GET"} ${url}`);
 
     const response = await fetch(url, {
         ...options,
         headers
     });
 
-    const responseText = await response.text();
-    console.log(`[Clicksign Response] Status ${response.status}:`, responseText);
+    const contentType = response.headers.get("content-type") || "";
+    const responseBody = contentType.includes("application/json")
+        ? await response.json().catch(() => null)
+        : await response.text().catch(() => "");
 
-    let responseData = null;
-    if (responseText) {
-        try {
-            responseData = JSON.parse(responseText);
-        } catch (e) {
-            console.error("Erro ao analisar resposta JSON do ClickSign:", e);
+    console.log(`[Plugsign Response] Status ${response.status}:`, typeof responseBody === "string" ? responseBody.slice(0, 500) : responseBody);
+
+    if (!response.ok) {
+        const message = typeof responseBody === "object" && responseBody
+            ? (responseBody as any).message || (responseBody as any).error || JSON.stringify(responseBody)
+            : `Erro ${response.status}`;
+        throw new Error(message);
+    }
+
+    return responseBody;
+}
+
+function onlyDigits(value: unknown) {
+    return String(value || "").replace(/\D/g, "");
+}
+
+function sanitizeFilename(value: string) {
+    return value
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-zA-Z0-9 -]/g, "")
+        .trim()
+        .replace(/\s+/g, " ")
+        .slice(0, 80) || "Associado";
+}
+
+function formatBirthdateForPlugsign(value: unknown) {
+    const text = String(value || "").trim();
+    const match = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    return match ? text : "";
+}
+
+function normalizePlugsignStatus(status: unknown) {
+    const normalized = String(status || "").trim().toLowerCase();
+    if (SIGNED_STATUSES.has(normalized)) return "signed";
+    if (normalized === "cancelled" || normalized === "declined") return normalized;
+    return PENDING_STATUS;
+}
+
+function getProposalIssueDate() {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat("pt-BR", {
+        timeZone: "America/Fortaleza",
+        day: "2-digit",
+        month: "long",
+        year: "numeric"
+    });
+
+    const parts = Object.fromEntries(
+        formatter.formatToParts(now).map((part) => [part.type, part.value])
+    );
+
+    return {
+        dia: parts.day || "",
+        mes: parts.month || "",
+        ano: parts.year || ""
+    };
+}
+
+function extractSigningUrl(value: unknown): string | null {
+    if (!value || typeof value !== "object") return null;
+
+    const record = value as Record<string, unknown>;
+    const directCandidates = [
+        record.signing_url,
+        record.signature_url,
+        record.sign_url,
+        record.signing_link,
+        record.signature_link,
+        record.link_signature,
+        record.url_sign,
+        record.url_signature,
+        record.url_assinatura,
+        record.link_assinatura,
+        record.signingUrl,
+        record.signatureUrl,
+        record.url,
+        record.link,
+        record.public_url,
+        record.publicUrl
+    ];
+
+    for (const candidate of directCandidates) {
+        if (typeof candidate === "string" && /^https?:\/\//i.test(candidate)) {
+            return candidate;
         }
     }
 
-    if (!response.ok) {
-        const errorMsg = responseData?.errors?.[0]?.detail || responseData?.errors?.[0]?.title || `Erro ${response.status}`;
-        throw new Error(errorMsg);
+    for (const nestedValue of Object.values(record)) {
+        if (Array.isArray(nestedValue)) {
+            for (const item of nestedValue) {
+                const found = extractSigningUrl(item);
+                if (found) return found;
+            }
+            continue;
+        }
+
+        if (nestedValue && typeof nestedValue === "object") {
+            const found = extractSigningUrl(nestedValue);
+            if (found) return found;
+        }
     }
 
-    return responseData;
+    return null;
 }
 
-/**
- * Gets or creates a ClickSign folder for a campaign.
- * Saves the folder ID to Firestore so the same folder is reused across proposals.
- */
-async function getOrCreateCampaignFolder(campaignId: string, campaignName: string): Promise<string | null> {
+async function notifySignatureWhatsapp(payload: { nome: string; numero: string; link: string }) {
+    const endpoint = process.env.PLUGSIGN_WHATSAPP_ENDPOINT || process.env.SIGNATURE_WHATSAPP_ENDPOINT;
+
+    if (!endpoint) {
+        console.log("[DEV PLUGSIGN WHATSAPP]", payload);
+        return { success: true, message: "Endpoint de WhatsApp de assinatura não configurado." };
+    }
+
+    try {
+        const response = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            return { success: false, message: `Erro API (${response.status}): ${errorText}` };
+        }
+
+        return { success: true };
+    } catch (error) {
+        return { success: false, message: error instanceof Error ? error.message : "Erro de conexão" };
+    }
+}
+
+function mapProposalToTemplateData(proposal: any) {
+    const issueDate = getProposalIssueDate();
+
+    return {
+        nome: proposal.nomeCompleto || "",
+        cpf: proposal.cpf || "",
+        email: proposal.email || "",
+        fone: proposal.telefone || "",
+        datanasc: proposal.dataNascimento || "",
+        numpis: proposal.pis || "",
+        sexo: proposal.sexo || "",
+        estadocivil: proposal.estadoCivil || "",
+        rg: proposal.rg || "",
+        datarg: proposal.datarg || proposal.dataExpedicao || "",
+        endereco: [proposal.logradouroTipo, proposal.logradouroNome].filter(Boolean).join(" ") || proposal.logradouroNome || "",
+        numcasa: proposal.numero || "",
+        bairro: proposal.bairro || "",
+        cidade: proposal.cidade || "",
+        uf: proposal.estado || "",
+        cep: proposal.cep || "",
+        escolaridade: proposal.escolaridade || "",
+        cargo: proposal.cargo || proposal.categoriaFuncao || "",
+        tc: proposal.tipoConta || "",
+        nomebanco: proposal.banco || "",
+        natural: proposal.naturalidadeMunicipio || "",
+        agencia: proposal.agencia || "",
+        numconta: proposal.conta ? `${proposal.conta}${proposal.contaDigito ? `-${proposal.contaDigito}` : ""}` : "",
+        dia: issueDate.dia,
+        mes: issueDate.mes,
+        ano: issueDate.ano
+    };
+}
+
+function appendFormData(formData: FormData, key: string, value: unknown) {
+    if (value === undefined || value === null || value === "") return;
+
+    if (Array.isArray(value)) {
+        value.forEach((item, index) => appendFormData(formData, `${key}[${index}]`, item));
+        return;
+    }
+
+    if (typeof value === "object") {
+        Object.entries(value as Record<string, unknown>).forEach(([childKey, childValue]) => {
+            appendFormData(formData, `${key}[${childKey}]`, childValue);
+        });
+        return;
+    }
+
+    formData.append(key, typeof value === "boolean" ? (value ? "1" : "0") : String(value));
+}
+
+async function renderProposalDocx(proposal: any) {
+    const template = await fs.readFile(PROPOSAL_TEMPLATE_PATH);
+    const zip = new PizZip(template);
+    const doc = new Docxtemplater(zip, {
+        delimiters: {
+            start: "{{",
+            end: "}}"
+        },
+        paragraphLoop: true,
+        linebreaks: true,
+        nullGetter: () => ""
+    });
+
+    doc.render(mapProposalToTemplateData(proposal));
+    return doc.getZip().generate({
+        type: "nodebuffer",
+        compression: "DEFLATE"
+    }) as Buffer;
+}
+
+async function getOrCreateCampaignFolder(campaignId: string, campaignName: string): Promise<number | null> {
     try {
         const db = getAdminDb();
         const campaignRef = db.collection("campaigns").doc(campaignId);
         const campaignSnap = await campaignRef.get();
 
-        // Return cached folder ID if already created
-        if (campaignSnap.exists) {
-            const existingFolderId = campaignSnap.data()?.clicksignFolderId;
-            if (existingFolderId) {
-                console.log(`[Clicksign] Reusing folder ${existingFolderId} for campaign ${campaignId}`);
-                return existingFolderId;
-            }
+        const existingFolderId = campaignSnap.exists
+            ? campaignSnap.data()?.plugsignFolderId || campaignSnap.data()?.clicksignFolderId
+            : null;
+
+        if (existingFolderId) {
+            return Number(existingFolderId);
         }
 
-        // Create a new folder named after the campaign
-        const folderRes = await clicksignFetch("/api/v3/folders", {
+        const folderRes = await plugsignFetch("/api/folders", {
             method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                data: {
-                    type: "folders",
-                    attributes: { name: campaignName }
-                }
+                name: campaignName,
+                accessibility: "Everyone"
             })
         });
 
-        const folderId = folderRes?.data?.id;
-        if (!folderId) {
-            console.warn(`[Clicksign] Could not create folder for campaign ${campaignId}`);
-            return null;
-        }
+        const folderId = Number(folderRes?.data?.id);
+        if (!folderId) return null;
 
-        console.log(`[Clicksign] Created folder ${folderId} for campaign "${campaignName}"`);
+        await campaignRef.update({
+            plugsignFolderId: folderId,
+            clicksignFolderId: String(folderId)
+        });
 
-        // Persist the folder ID on the campaign document
-        await campaignRef.update({ clicksignFolderId: folderId });
         return folderId;
     } catch (err) {
-        console.warn(`[Clicksign] getOrCreateCampaignFolder failed for ${campaignId}:`, err);
-        return null; // Non-fatal — envelope will be created without a folder
+        console.warn(`[Plugsign] getOrCreateCampaignFolder failed for ${campaignId}:`, err);
+        return null;
     }
 }
 
-/**
- * Creates envelope, document, signer, requirement and activates envelope.
- * Saves keys to proposal document in Firestore.
- */
-export async function getOrCreateProposalSignature(proposalId: string, options?: { requireWhatsappVerified?: boolean; autoResendWhatsapp?: boolean }): Promise<ClickSignResponse> {
+async function getCampaignFolderId(proposal: any) {
+    if (!proposal.campaignId || proposal.campaignId === "uncategorized") return null;
+
+    const db = getAdminDb();
+    const campaignSnap = await db.collection("campaigns").doc(proposal.campaignId).get();
+    const campaignName = campaignSnap.exists
+        ? (campaignSnap.data()?.name || campaignSnap.data()?.titulo || `Campanha ${proposal.campaignId}`)
+        : `Campanha ${proposal.campaignId}`;
+
+    return getOrCreateCampaignFolder(proposal.campaignId, campaignName);
+}
+
+async function getPlugsignRequest(signingKey: string): Promise<PlugsignRequest | null> {
+    const res = await plugsignFetch(`/api/requests/${encodeURIComponent(signingKey)}`, {
+        method: "GET"
+    });
+
+    return res?.data || null;
+}
+
+async function markSignedIfNeeded(proposalId: string, request: PlugsignRequest) {
+    const db = getAdminDb();
+    const docRef = db.collection("proposals").doc(proposalId);
+    const snap = await docRef.get();
+    if (!snap.exists) return false;
+
+    const proposal = snap.data() as any;
+    const status = normalizePlugsignStatus(request.status);
+    if (status !== "signed") return false;
+
+    const signedAt = request.update_time || new Date().toISOString();
+    const update: FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData> = {
+        clicksignStatus: "signed",
+        plugsignStatus: "signed",
+        clicksignSignedAt: signedAt,
+        plugsignSignedAt: signedAt,
+        documentsSubmittedAt: proposal.documentsSubmittedAt || signedAt
+    };
+
+    if (proposal.status === "pending_documents") {
+        update.status = "documents_received";
+    }
+
+    await docRef.update(update);
+    return true;
+}
+
+export async function getOrCreateProposalSignature(
+    proposalId: string,
+    options?: { requireWhatsappVerified?: boolean; autoResendWhatsapp?: boolean }
+): Promise<ClickSignResponse> {
     try {
         const db = getAdminDb();
         const docRef = db.collection("proposals").doc(proposalId);
@@ -138,323 +383,163 @@ export async function getOrCreateProposalSignature(proposalId: string, options?:
             };
         }
 
-        // If ClickSign signature is already initialized, validate and return existing signer key
-        if (proposal.clicksignEnvelopeId && proposal.clicksignSignerId) {
-            // Verify the signer still exists in ClickSign before returning cached IDs
-            try {
-                const apiKey = process.env.CLICKSIGN_API_KEY;
-                const apiUrl = process.env.CLICKSIGN_API_URL || "https://sandbox.clicksign.com";
-                const checkRes = await fetch(
-                    `${apiUrl}/api/v3/envelopes/${proposal.clicksignEnvelopeId}/signers/${proposal.clicksignSignerId}`,
-                    {
-                        method: "GET",
-                        headers: {
-                            "Authorization": apiKey!,
-                            "Accept": "application/vnd.api+json"
-                        }
-                    }
-                );
-                if (checkRes.ok) {
-                    console.log(`[Clicksign] Returning cached signer ${proposal.clicksignSignerId} for proposal ${proposalId}`);
+        const existingSigningKey = proposal.plugsignSigningKey || proposal.clicksignSignerId;
+        const existingDocumentKey = proposal.plugsignDocumentKey || proposal.clicksignDocumentId;
+        const existingRequestId = proposal.plugsignRequestId || proposal.clicksignEnvelopeId;
+        const phoneDigits = onlyDigits(proposal.telefone);
+        const phoneWithCountry = phoneDigits.startsWith("55") ? phoneDigits : `55${phoneDigits}`;
 
-                    if (options?.autoResendWhatsapp && proposal.clicksignStatus !== "signed") {
-                        try {
-                            await sendClicksignWhatsappNotification(proposal.clicksignEnvelopeId, proposal.clicksignSignerId);
-                            await docRef.collection("notifications").add({
-                                type: "clicksign_whatsapp_auto_resend",
-                                status: "success",
-                                timestamp: new Date().toISOString(),
-                                error: null,
-                                payload: {
-                                    envelopeId: proposal.clicksignEnvelopeId,
-                                    signerId: proposal.clicksignSignerId,
-                                    source: "cached_signature"
-                                }
-                            });
-                        } catch (notifyError) {
-                            console.warn(`[Clicksign] Auto resend failed for cached signer ${proposal.clicksignSignerId}:`, notifyError);
-                            await docRef.collection("notifications").add({
-                                type: "clicksign_whatsapp_auto_resend",
-                                status: "error",
-                                timestamp: new Date().toISOString(),
-                                error: notifyError instanceof Error ? notifyError.message : "Erro ao reenviar WhatsApp",
-                                payload: {
-                                    envelopeId: proposal.clicksignEnvelopeId,
-                                    signerId: proposal.clicksignSignerId,
-                                    source: "cached_signature"
-                                }
-                            });
-                        }
+        if (existingSigningKey && existingDocumentKey && existingRequestId) {
+            try {
+                const existingRequest = await getPlugsignRequest(existingSigningKey);
+                const normalizedStatus = normalizePlugsignStatus(existingRequest?.status);
+                if (existingRequest) {
+                    if (normalizedStatus === "signed") {
+                        await markSignedIfNeeded(proposalId, existingRequest);
+                    }
+
+                    const existingSigningUrl = proposal.plugsignSigningUrl || extractSigningUrl(existingRequest);
+                    if (options?.autoResendWhatsapp && normalizedStatus !== "signed" && existingSigningUrl) {
+                        const whatsappResult = await notifySignatureWhatsapp({
+                            nome: proposal.nomeCompleto || "Cooperado",
+                            numero: phoneWithCountry,
+                            link: existingSigningUrl
+                        });
+
+                        await docRef.update({
+                            plugsignSigningUrl: existingSigningUrl,
+                            plugsignWhatsappSentAt: whatsappResult.success ? new Date().toISOString() : null,
+                            plugsignWhatsappError: whatsappResult.success ? null : whatsappResult.message
+                        });
                     }
 
                     return {
                         success: true,
-                        envelopeId: proposal.clicksignEnvelopeId,
-                        signerId: proposal.clicksignSignerId,
-                        status: proposal.clicksignStatus || "pending"
+                        envelopeId: String(existingRequest.id || existingRequestId),
+                        documentId: String(existingRequest.document || existingDocumentKey),
+                        signerId: String(existingRequest.signing_key || existingSigningKey),
+                        signingUrl: existingSigningUrl || undefined,
+                        status: normalizedStatus
                     };
-                } else {
-                    // Cached IDs are invalid (404 or other error) - clear them and recreate
-                    console.warn(`[Clicksign] Cached signer invalid (${checkRes.status}), recreating envelope for proposal ${proposalId}`);
-                    await docRef.update({
-                        clicksignEnvelopeId: null,
-                        clicksignDocumentId: null,
-                        clicksignSignerId: null,
-                        clicksignStatus: null
-                    });
                 }
-            } catch (validationError) {
-                console.warn(`[Clicksign] Could not validate cached signer, recreating:`, validationError);
-                await docRef.update({
-                    clicksignEnvelopeId: null,
-                    clicksignDocumentId: null,
-                    clicksignSignerId: null,
-                    clicksignStatus: null
-                });
+            } catch (err) {
+                console.warn(`[Plugsign] Could not validate cached request for proposal ${proposalId}, recreating:`, err);
             }
         }
 
-        console.log(`[Clicksign] Starting signature creation for proposal ${proposalId}`);
+        const folderId = await getCampaignFolderId(proposal);
+        const docxBuffer = await renderProposalDocx(proposal);
+        const filename = `Proposta de Adesao - ${sanitizeFilename(proposal.nomeCompleto || "Associado")}.docx`;
 
-        // Resolve campaign folder (creates it if needed, non-fatal if it fails)
-        let folderId: string | null = null;
-        if (proposal.campaignId) {
-            const db2 = getAdminDb();
-            const campaignSnap = await db2.collection("campaigns").doc(proposal.campaignId).get();
-            const campaignName = campaignSnap.exists
-                ? (campaignSnap.data()?.name || campaignSnap.data()?.titulo || `Campanha ${proposal.campaignId}`)
-                : `Campanha ${proposal.campaignId}`;
-            folderId = await getOrCreateCampaignFolder(proposal.campaignId, campaignName);
-        }
-
-        // 1. Create Envelope (with optional folder relationship)
-        const envelopePayload: any = {
-            data: {
-                type: "envelopes",
-                attributes: {
-                    name: `Proposta de Adesão - ${proposal.nomeCompleto}`
-                },
-                ...(folderId && {
-                    relationships: {
-                        folder: {
-                            data: { type: "folders", id: folderId }
+        const payload = {
+            ...(folderId && { folder: folderId }),
+            name: filename,
+            chain: false,
+            silent_mode: true,
+            optimizer: true,
+            editablevalidate: 3,
+            width_page: 794,
+            recipients: [
+                {
+                    send_to: phoneWithCountry,
+                    subject: "Assinatura da Proposta de Adesão",
+                    message: "Olá! Assine sua Proposta de Adesão da COOPEDU.",
+                    fullname: proposal.nomeCompleto || "",
+                    cpf: onlyDigits(proposal.cpf),
+                    birthdate: formatBirthdateForPlugsign(proposal.dataNascimento),
+                    doubleauth: false,
+                    allow_selfie: true,
+                    allow_document: true,
+                    allow_document_back: true,
+                    allow_cpf: true,
+                    allow_birth_date: true,
+                    signature_type: "Interessado",
+                    send_finished: true,
+                    signature_mode: "all",
+                    certificate: 0,
+                    fields: [
+                        {
+                            type: "signature",
+                            page: 1,
+                            width: 200,
+                            height: 75,
+                            xPos: -999,
+                            yPos: -999
                         }
-                    }
-                })
-            }
+                    ]
+                }
+            ]
         };
 
-        const envelopeRes = await clicksignFetch("/api/v3/envelopes", {
+        const formData = new FormData();
+        appendFormData(formData, "folder", payload.folder);
+        appendFormData(formData, "name", payload.name);
+        appendFormData(formData, "chain", payload.chain);
+        appendFormData(formData, "silent_mode", payload.silent_mode);
+        appendFormData(formData, "optimizer", payload.optimizer);
+        appendFormData(formData, "editablevalidate", payload.editablevalidate);
+        appendFormData(formData, "width_page", payload.width_page);
+        appendFormData(formData, "recipients", payload.recipients);
+        formData.append(
+            "file",
+            new Blob([new Uint8Array(docxBuffer)], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
+            filename
+        );
+
+        const requestRes = await plugsignFetch("/api/files/upload/requests", {
             method: "POST",
-            body: JSON.stringify(envelopePayload)
+            body: formData
         });
 
-        const envelopeId = envelopeRes?.data?.id;
-        if (!envelopeId) throw new Error("Falha ao gerar ID do envelope no ClickSign.");
+        const request = (Array.isArray(requestRes?.data)
+            ? requestRes.data[0]
+            : requestRes?.data) as PlugsignRequest | undefined;
 
-        // 2. Create Document by Template
-        // Map template variables based on docx template fields:
-        // {{nome}}, {{cpf}}, {{datanasc}}, {{numpis}}, {{sexo}}, {{estadocivil}}, {{rg}}, {{datarg}}
-        // {{endereco}}, {{numcasa}}, {{bairro}}, {{cidade}}, {{uf}}, {{cep}}, {{fone}}, {{email}}
-        // {{escolaridade}}, {{tc}}, {{nomebanco}}, {{agencia}}, {{numconta}}
-
-        let birthdayFormatted = "";
-        if (proposal.dataNascimento && proposal.dataNascimento.includes('/')) {
-            const parts = proposal.dataNascimento.split('/');
-            if (parts.length === 3) {
-                birthdayFormatted = `${parts[2]}-${parts[1]}-${parts[0]}`; // YYYY-MM-DD
-            }
+        if (!request?.id || !request?.signing_key || !request?.document) {
+            throw new Error("Plugsign não retornou os identificadores da solicitação.");
         }
 
-        const documentPayload = {
-            data: {
-                type: "documents",
-                attributes: {
-                    filename: `Proposta de Adesao - ${(proposal.nomeCompleto || "Associado").replace(/[^a-zA-Z0-9 ]/g, '')}.docx`,
-                    template: {
-                        key: DEFAULT_TEMPLATE_ID,
-                        data: {
-                            nome: proposal.nomeCompleto || "",
-                            cpf: proposal.cpf || "",
-                            email: proposal.email || "",
-                            fone: proposal.telefone || "",
-                            datanasc: proposal.dataNascimento || "",
-                            numpis: proposal.pis || "",
-                            sexo: proposal.sexo || "",
-                            estadocivil: proposal.estadoCivil || "",
-                            rg: proposal.rg || "",
-                            datarg: proposal.datarg || "",
-                            endereco: proposal.logradouroNome || "",
-                            numcasa: proposal.numero || "",
-                            bairro: proposal.bairro || "",
-                            cidade: proposal.cidade || "",
-                            uf: proposal.estado || "",
-                            cep: proposal.cep || "",
-                            escolaridade: proposal.escolaridade || "",
-                            tc: "",
-                            nomebanco: proposal.banco || "",
-                            natural: proposal.naturalidadeMunicipio || "",
-                            agencia: proposal.agencia || "",
-                            numconta: proposal.conta ? `${proposal.conta}${proposal.contaDigito ? `-${proposal.contaDigito}` : ''}` : ""
-                        }
-                    }
-                }
-            }
-        };
-
-        const documentRes = await clicksignFetch(`/api/v3/envelopes/${envelopeId}/documents`, {
-            method: "POST",
-            body: JSON.stringify(documentPayload)
-        });
-
-        const documentId = documentRes?.data?.id;
-        if (!documentId) throw new Error("Falha ao gerar ID do documento no ClickSign.");
-
-        // 3. Create Signer
-        // phone_number: 10 or 11 digits only (no +55 prefix)
-        const phoneDigits = (proposal.telefone || "").replace(/\D/g, '');
-        const formattedPhone = phoneDigits.startsWith('55') && phoneDigits.length > 11
-            ? phoneDigits.slice(2)  // remove country code if present
-            : phoneDigits;
-
-        const signerPayload = {
-            data: {
-                type: "signers",
-                attributes: {
-                    name: proposal.nomeCompleto,
-                    email: proposal.email,
-                    phone_number: formattedPhone,
-                    documentation: proposal.cpf || "",
-                    birthday: birthdayFormatted || null,
-                    communicate_events: {
-                        signature_request: "whatsapp"
-                    }
-                }
-            }
-        };
-
-        const signerRes = await clicksignFetch(`/api/v3/envelopes/${envelopeId}/signers`, {
-            method: "POST",
-            body: JSON.stringify(signerPayload)
-        });
-
-        const signerId = signerRes?.data?.id;
-        if (!signerId) throw new Error("Falha ao gerar ID do signatário no ClickSign.");
-
-        // 4. Create Authentication Requirements (each auth type is a separate requirement)
-        const makeAuthReq = (auth: string) => ({
-            data: {
-                type: "requirements",
-                attributes: { action: "provide_evidence", auth },
-                relationships: {
-                    document: { data: { type: "documents", id: documentId } },
-                    signer: { data: { type: "signers", id: signerId } }
-                }
-            }
-        });
-
-        // 4.0 Qualification requirement (links signer to document as signatory)
-        await clicksignFetch(`/api/v3/envelopes/${envelopeId}/requirements`, {
-            method: "POST",
-            body: JSON.stringify({
-                data: {
-                    type: "requirements",
-                    attributes: { action: "agree", role: "sign" },
-                    relationships: {
-                        document: { data: { type: "documents", id: documentId } },
-                        signer: { data: { type: "signers", id: signerId } }
-                    }
-                }
+        const signingUrl = extractSigningUrl(request) || extractSigningUrl(requestRes);
+        const whatsappResult = signingUrl
+            ? await notifySignatureWhatsapp({
+                nome: proposal.nomeCompleto || "Cooperado",
+                numero: phoneWithCountry,
+                link: signingUrl
             })
-        });
+            : { success: false, message: "Plugsign não retornou o link de assinatura no modo silencioso." };
 
-        // 4a. WhatsApp token authentication
-        await clicksignFetch(`/api/v3/envelopes/${envelopeId}/requirements`, {
-            method: "POST",
-            body: JSON.stringify(makeAuthReq("whatsapp"))
-        });
-
-        // 4b. Selfie authentication
-        await clicksignFetch(`/api/v3/envelopes/${envelopeId}/requirements`, {
-            method: "POST",
-            body: JSON.stringify(makeAuthReq("selfie"))
-        });
-
-        // 4c. Official document authentication
-        await clicksignFetch(`/api/v3/envelopes/${envelopeId}/requirements`, {
-            method: "POST",
-            body: JSON.stringify(makeAuthReq("official_document"))
-        });
-
-        // 5. Activate Envelope (PATCH status: draft -> running)
-        await clicksignFetch(`/api/v3/envelopes/${envelopeId}`, {
-            method: "PATCH",
-            body: JSON.stringify({
-                data: {
-                    type: "envelopes",
-                    id: envelopeId,
-                    attributes: { status: "running" }
-                }
-            })
-        });
-
-        console.log(`[Clicksign] Activated envelope ${envelopeId} successfully for proposal ${proposalId}`);
-
-
-        // Save metadata in Firestore
-        // NOTE: The signing URL for whatsapp+selfie flow is a one-time token
-        // generated by ClickSign per notification — it cannot be pre-computed from the signer ID.
-        // Admins must use the 'Resend WhatsApp' button in the admin panel.
         await docRef.update({
-            clicksignEnvelopeId: envelopeId,
-            clicksignDocumentId: documentId,
-            clicksignSignerId: signerId,
-            clicksignStatus: "pending"
+            plugsignRequestId: String(request.id),
+            plugsignDocumentKey: request.document,
+            plugsignSigningKey: request.signing_key,
+            plugsignSigningUrl: signingUrl || null,
+            plugsignStatus: normalizePlugsignStatus(request.status),
+            plugsignProvider: "plugsign",
+            plugsignOriginalFilename: filename,
+            plugsignWhatsappSentAt: whatsappResult.success ? new Date().toISOString() : null,
+            plugsignWhatsappError: whatsappResult.success ? null : whatsappResult.message,
+            clicksignEnvelopeId: String(request.id),
+            clicksignDocumentId: request.document,
+            clicksignSignerId: request.signing_key,
+            clicksignStatus: normalizePlugsignStatus(request.status)
         });
-
-        if (options?.autoResendWhatsapp) {
-            try {
-                await sendClicksignWhatsappNotification(envelopeId, signerId);
-                await docRef.collection("notifications").add({
-                    type: "clicksign_whatsapp_auto_resend",
-                    status: "success",
-                    timestamp: new Date().toISOString(),
-                    error: null,
-                    payload: {
-                        envelopeId,
-                        signerId,
-                        source: "new_signature"
-                    }
-                });
-                console.log(`[Clicksign] Auto resent WhatsApp for signer ${signerId} after envelope creation`);
-            } catch (notifyError) {
-                console.warn(`[Clicksign] Auto resend failed after envelope creation for signer ${signerId}:`, notifyError);
-                await docRef.collection("notifications").add({
-                    type: "clicksign_whatsapp_auto_resend",
-                    status: "error",
-                    timestamp: new Date().toISOString(),
-                    error: notifyError instanceof Error ? notifyError.message : "Erro ao reenviar WhatsApp",
-                    payload: {
-                        envelopeId,
-                        signerId,
-                        source: "new_signature"
-                    }
-                });
-            }
-        }
 
         return {
             success: true,
-            envelopeId,
-            documentId,
-            signerId,
-            status: "pending"
+            envelopeId: String(request.id),
+            documentId: request.document,
+            signerId: request.signing_key,
+            signingUrl: signingUrl || undefined,
+            status: normalizePlugsignStatus(request.status),
+            message: whatsappResult.success
+                ? "Solicitação criada e link de assinatura enviado pelo WhatsApp."
+                : `Solicitação criada, mas o WhatsApp não foi enviado: ${whatsappResult.message}`
         };
     } catch (error: any) {
-        console.error("[Clicksign Error] getOrCreateProposalSignature failed:", error);
+        console.error("[Plugsign Error] getOrCreateProposalSignature failed:", error);
         return {
             success: false,
-            message: error?.message || "Erro desconhecido na integração com Clicksign."
+            message: error?.message || "Erro desconhecido na integração com Plugsign."
         };
     }
 }
@@ -469,7 +554,7 @@ export async function getProposalSignatureStatus(proposalId: string): Promise<Pr
         }
 
         const proposal = docSnapshot.data() as any;
-        const clicksignStatus = proposal.clicksignStatus || null;
+        const clicksignStatus = proposal.clicksignStatus || proposal.plugsignStatus || null;
 
         return {
             success: true,
@@ -477,16 +562,11 @@ export async function getProposalSignatureStatus(proposalId: string): Promise<Pr
             signed: clicksignStatus === "signed"
         };
     } catch (error: any) {
-        console.error("[Clicksign] getProposalSignatureStatus failed:", error);
+        console.error("[Plugsign] getProposalSignatureStatus failed:", error);
         return { success: false, message: error?.message || "Erro ao consultar assinatura." };
     }
 }
 
-/**
- * Forces creation of a new ClickSign envelope for any proposal, regardless of current status.
- * Used by admins to generate signing documents for proposals that were submitted before
- * the ClickSign integration existed, or to regenerate a document.
- */
 export async function forceCreateClicksignEnvelope(proposalId: string): Promise<ClickSignResponse> {
     try {
         const db = getAdminDb();
@@ -497,31 +577,30 @@ export async function forceCreateClicksignEnvelope(proposalId: string): Promise<
             return { success: false, message: "Proposta não encontrada." };
         }
 
-        // Clear any existing ClickSign data to force a full recreation
         await docRef.update({
+            plugsignRequestId: null,
+            plugsignDocumentKey: null,
+            plugsignSigningKey: null,
+            plugsignSigningUrl: null,
+            plugsignStatus: null,
+            plugsignWhatsappSentAt: null,
+            plugsignWhatsappError: null,
             clicksignEnvelopeId: null,
             clicksignDocumentId: null,
             clicksignSignerId: null,
             clicksignStatus: null
         });
 
-        console.log(`[Clicksign] Force-creating new envelope for proposal ${proposalId}`);
-
-        // Reuse the same creation flow
         return await getOrCreateProposalSignature(proposalId);
     } catch (error: any) {
-        console.error("[Clicksign] forceCreateClicksignEnvelope failed:", error);
+        console.error("[Plugsign] forceCreateClicksignEnvelope failed:", error);
         return {
             success: false,
-            message: error?.message || "Erro ao forçar criação do envelope ClickSign."
+            message: error?.message || "Erro ao forçar criação da solicitação Plugsign."
         };
     }
 }
 
-/**
- * Checks if the envelope has been completed (signed by the user) on ClickSign.
- * Updates Firestore proposal document if completed.
- */
 export async function verifyProposalSignature(proposalId: string): Promise<boolean> {
     try {
         const db = getAdminDb();
@@ -529,52 +608,32 @@ export async function verifyProposalSignature(proposalId: string): Promise<boole
         const docSnapshot = await docRef.get();
 
         if (!docSnapshot.exists) {
-            console.error(`[Clicksign Verify] Proposal ${proposalId} not found.`);
+            console.error(`[Plugsign Verify] Proposal ${proposalId} not found.`);
             return false;
         }
 
         const proposal = docSnapshot.data() as any;
 
-        if (proposal.clicksignStatus === "signed") {
+        if (proposal.clicksignStatus === "signed" || proposal.plugsignStatus === "signed") {
             return true;
         }
 
-        const envelopeId = proposal.clicksignEnvelopeId;
-        if (!envelopeId) {
-            console.warn(`[Clicksign Verify] Proposal ${proposalId} does not have a ClickSign Envelope ID.`);
+        const signingKey = proposal.plugsignSigningKey || proposal.clicksignSignerId;
+        if (!signingKey) {
+            console.warn(`[Plugsign Verify] Proposal ${proposalId} does not have a Plugsign signing key.`);
             return false;
         }
 
-        const envelopeData = await clicksignFetch(`/api/v3/envelopes/${envelopeId}`, {
-            method: "GET"
-        });
+        const request = await getPlugsignRequest(signingKey);
+        if (!request) return false;
 
-        const status = envelopeData?.data?.attributes?.status;
-        console.log(`[Clicksign Verify] Envelope ${envelopeId} status is: ${status}`);
-
-        // ClickSign terminal statuses: 'completed', 'finalized', and 'closed' all mean fully signed
-        if (status === "completed" || status === "finalized" || status === "closed") {
-            await docRef.update({
-                clicksignStatus: "signed"
-            });
-            return true;
-        }
-
-        if (status === "cancelled") {
-            console.warn(`[Clicksign Verify] Envelope ${envelopeId} was cancelled.`);
-        }
-
-        return false;
+        return await markSignedIfNeeded(proposalId, request);
     } catch (error) {
-        console.error(`[Clicksign Verify] Failed to verify signature for proposal ${proposalId}:`, error);
+        console.error(`[Plugsign Verify] Failed to verify signature for proposal ${proposalId}:`, error);
         return false;
     }
 }
 
-/**
- * Fetches a temporary pre-signed URL to download the signed PDF from ClickSign.
- * The URL is generated by ClickSign and expires in ~5 minutes.
- */
 export async function getClicksignSignedDocumentUrl(proposalId: string): Promise<{
     success: boolean;
     url?: string;
@@ -590,102 +649,75 @@ export async function getClicksignSignedDocumentUrl(proposalId: string): Promise
         }
 
         const proposal = docSnapshot.data() as any;
-        const envelopeId = proposal.clicksignEnvelopeId;
+        const documentKey = proposal.plugsignDocumentKey || proposal.clicksignDocumentId;
 
-        if (!envelopeId) {
-            return { success: false, message: "Proposta não possui envelope ClickSign." };
-        }
-
-        const docsData = await clicksignFetch(`/api/v3/envelopes/${envelopeId}/documents`, {
-            method: "GET"
-        });
-
-        const firstDoc = docsData?.data?.[0];
-        if (!firstDoc) {
-            return { success: false, message: "Nenhum documento encontrado no envelope." };
-        }
-
-        const signedUrl = firstDoc?.links?.files?.signed;
-        const originalUrl = firstDoc?.links?.files?.original;
-        const filename = firstDoc?.attributes?.filename || "documento-assinado.pdf";
-
-        // For closed envelopes, use the signed PDF; for pending, use original
-        const downloadUrl = signedUrl || originalUrl;
-
-        if (!downloadUrl) {
-            return { success: false, message: "URL do documento não disponível." };
+        if (!documentKey) {
+            return { success: false, message: "Proposta não possui documento Plugsign." };
         }
 
         return {
             success: true,
-            url: downloadUrl,
-            filename: filename.replace(/\.(docx|doc)$/i, ".pdf")
+            url: `/api/plugsign-download/${encodeURIComponent(documentKey)}`,
+            filename: `proposta-${sanitizeFilename(proposal.nomeCompleto || proposalId)}.pdf`
         };
     } catch (error: any) {
-        console.error("[Clicksign] getClicksignSignedDocumentUrl failed:", error);
+        console.error("[Plugsign] getClicksignSignedDocumentUrl failed:", error);
         return { success: false, message: error?.message || "Erro ao obter URL do documento." };
     }
 }
 
-/**
- * Re-sends the WhatsApp signing notification to the signer via ClickSign API.
- * Used by admins to nudge signatories without creating a new envelope.
- */
 export async function resendClicksignWhatsapp(proposalId: string): Promise<{ success: boolean; message?: string }> {
     try {
         const db = getAdminDb();
         const docRef = db.collection("proposals").doc(proposalId);
-        const docSnapshot = await docRef.get();
+        const snap = await docRef.get();
 
-        if (!docSnapshot.exists) {
+        if (!snap.exists) {
             return { success: false, message: "Proposta não encontrada." };
         }
 
-        const proposal = docSnapshot.data() as any;
-        const envelopeId = proposal.clicksignEnvelopeId;
-        const signerId = proposal.clicksignSignerId;
-
-        if (!envelopeId || !signerId) {
-            return { success: false, message: "Proposta sem envelope ClickSign gerado ainda." };
-        }
-
-        if (proposal.clicksignStatus === "signed") {
+        const proposal = snap.data() as any;
+        if (proposal.clicksignStatus === "signed" || proposal.plugsignStatus === "signed") {
             return { success: false, message: "Esta proposta já foi assinada." };
         }
 
-        const notifyRes = await sendClicksignWhatsappNotification(envelopeId, signerId);
+        const savedSigningUrl = proposal.plugsignSigningUrl;
+        const phoneDigits = onlyDigits(proposal.telefone);
+        const phoneWithCountry = phoneDigits.startsWith("55") ? phoneDigits : `55${phoneDigits}`;
 
-        console.log(`[Clicksign] WhatsApp resent for signer ${signerId}`, notifyRes);
-        return { success: true, message: "Notificação WhatsApp reenviada com sucesso." };
+        if (savedSigningUrl) {
+            const whatsappResult = await notifySignatureWhatsapp({
+                nome: proposal.nomeCompleto || "Cooperado",
+                numero: phoneWithCountry,
+                link: savedSigningUrl
+            });
+
+            await docRef.update({
+                plugsignWhatsappSentAt: whatsappResult.success ? new Date().toISOString() : null,
+                plugsignWhatsappError: whatsappResult.success ? null : whatsappResult.message
+            });
+
+            return {
+                success: whatsappResult.success,
+                message: whatsappResult.success
+                    ? "Link de assinatura reenviado pelo WhatsApp."
+                    : whatsappResult.message
+            };
+        }
+
+        const recreated = await forceCreateClicksignEnvelope(proposalId);
+        return {
+            success: recreated.success,
+            message: recreated.message || (recreated.success
+                ? "Nova solicitação Plugsign enviada ao signatário."
+                : "Erro ao recriar solicitação Plugsign.")
+        };
     } catch (error: any) {
-        console.error("[Clicksign] resendClicksignWhatsapp failed:", error);
-        return { success: false, message: error?.message || "Erro ao reenviar notificação WhatsApp." };
+        console.error("[Plugsign] resendClicksignWhatsapp failed:", error);
+        return { success: false, message: error?.message || "Erro ao reenviar solicitação Plugsign." };
     }
 }
 
-async function sendClicksignWhatsappNotification(envelopeId: string, signerId: string) {
-    // ClickSign v3: notify signer via WhatsApp using the notifications endpoint.
-    // Body must follow JSON:API spec with data.type = "notifications".
-    return await clicksignFetch(
-        `/api/v3/envelopes/${envelopeId}/signers/${signerId}/notifications`,
-        {
-            method: "POST",
-            body: JSON.stringify({
-                data: {
-                    type: "notifications",
-                    attributes: {}
-                }
-            })
-        }
-    );
-}
-
-/**
- * Syncs ClickSign signature status for all proposals that have an envelope
- * but are not yet marked as signed. Optionally filter by campaignId.
- *
- * Intended for batch CSV flows where there's no user-side "finalizar" button.
- */
 export async function batchSyncClicksignStatus(campaignId?: string): Promise<{
     checked: number;
     nowSigned: number;
@@ -694,7 +726,6 @@ export async function batchSyncClicksignStatus(campaignId?: string): Promise<{
 }> {
     const db = getAdminDb();
 
-    // Query proposals that have an envelope but haven't been marked signed yet
     let query = db.collection("proposals")
         .where("clicksignEnvelopeId", "!=", null) as FirebaseFirestore.Query;
 
@@ -705,37 +736,37 @@ export async function batchSyncClicksignStatus(campaignId?: string): Promise<{
     }
 
     const snap = await query.get();
-    const pending = snap.docs.filter(d => d.data().clicksignStatus !== "signed");
+    const pending = snap.docs.filter(d => d.data().clicksignStatus !== "signed" && d.data().plugsignStatus !== "signed");
 
     let nowSigned = 0;
     let stillPending = 0;
     let errors = 0;
 
-    console.log(`[Clicksign Batch Sync] Checking ${pending.length} pending envelopes...`);
-
     for (const doc of pending) {
         try {
-            const envelopeId = doc.data().clicksignEnvelopeId;
-            const envelopeData = await clicksignFetch(`/api/v3/envelopes/${envelopeId}`, { method: "GET" });
-            const status = envelopeData?.data?.attributes?.status;
+            const signingKey = doc.data().plugsignSigningKey || doc.data().clicksignSignerId;
+            if (!signingKey) {
+                stillPending++;
+                continue;
+            }
 
-            if (status === "completed" || status === "finalized" || status === "closed") {
-                await doc.ref.update({ clicksignStatus: "signed" });
+            const request = await getPlugsignRequest(signingKey);
+            const status = normalizePlugsignStatus(request?.status);
+
+            if (request && status === "signed") {
+                await markSignedIfNeeded(doc.id, request);
                 nowSigned++;
-                console.log(`[Clicksign Batch Sync] ✅ Marked signed: ${doc.id} (envelope ${envelopeId})`);
             } else {
                 stillPending++;
             }
 
-            // Respect rate limits
             await new Promise(r => setTimeout(r, 300));
         } catch (err) {
-            console.error(`[Clicksign Batch Sync] Error checking ${doc.id}:`, err);
+            console.error(`[Plugsign Batch Sync] Error checking ${doc.id}:`, err);
             errors++;
         }
     }
 
-    console.log(`[Clicksign Batch Sync] Done. Signed: ${nowSigned}, Pending: ${stillPending}, Errors: ${errors}`);
     return { checked: pending.length, nowSigned, stillPending, errors };
 }
 
@@ -768,10 +799,6 @@ export async function getDocumentDashboardStats(): Promise<DocumentDashboardStat
     };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// BATCH OPERATIONS
-// ─────────────────────────────────────────────────────────────────────────────
-
 export interface ProposalCpfResult {
     cpf: string;
     proposalId: string | null;
@@ -783,56 +810,32 @@ export interface ProposalCpfResult {
     clicksignEnvelopeId: string | null;
 }
 
-/**
- * Finds proposals by a list of CPFs.
- * Returns one result per CPF, including proposals not found.
- */
 export async function findProposalsByCpfs(cpfs: string[]): Promise<ProposalCpfResult[]> {
     const db = getAdminDb();
-
-    // Normalize CPFs (strip non-digits, then reformat as 000.000.000-00)
     const normalize = (cpf: string) => {
-        const d = cpf.replace(/\D/g, '');
+        const d = cpf.replace(/\D/g, "");
         if (d.length !== 11) return cpf.trim();
         return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
     };
 
     const normalized = cpfs.map(normalize);
     const results: ProposalCpfResult[] = [];
-
-    // Cache campaign names to avoid repeated Firestore reads
     const campaignCache: Record<string, string> = {};
-
-    // Firestore 'in' query supports max 30 items; batch in chunks
-    const chunkSize = 30;
     const found: Record<string, any> = {};
 
-    for (let i = 0; i < normalized.length; i += chunkSize) {
-        const chunk = normalized.slice(i, i + chunkSize);
-        const snap = await db.collection("proposals")
-            .where("cpf", "in", chunk)
-            .get();
-
+    for (let i = 0; i < normalized.length; i += 30) {
+        const chunk = normalized.slice(i, i + 30);
+        const snap = await db.collection("proposals").where("cpf", "in", chunk).get();
         snap.forEach(doc => {
             const d = doc.data();
             found[d.cpf] = { id: doc.id, ...d };
         });
     }
 
-    // Resolve campaign names
     for (const cpf of normalized) {
         const proposal = found[cpf];
         if (!proposal) {
-            results.push({
-                cpf,
-                proposalId: null,
-                nomeCompleto: null,
-                campaignId: null,
-                campaignName: null,
-                status: null,
-                clicksignStatus: null,
-                clicksignEnvelopeId: null
-            });
+            results.push({ cpf, proposalId: null, nomeCompleto: null, campaignId: null, campaignName: null, status: null, clicksignStatus: null, clicksignEnvelopeId: null });
             continue;
         }
 
@@ -854,8 +857,8 @@ export async function findProposalsByCpfs(cpfs: string[]): Promise<ProposalCpfRe
             campaignId: proposal.campaignId || null,
             campaignName,
             status: proposal.status || null,
-            clicksignStatus: proposal.clicksignStatus || null,
-            clicksignEnvelopeId: proposal.clicksignEnvelopeId || null
+            clicksignStatus: proposal.clicksignStatus || proposal.plugsignStatus || null,
+            clicksignEnvelopeId: proposal.clicksignEnvelopeId || proposal.plugsignRequestId || null
         });
     }
 
@@ -874,11 +877,6 @@ export interface BatchCreateResult {
     skipReason?: string;
 }
 
-/**
- * Sequentially creates ClickSign envelopes for a list of proposal IDs.
- * Each proposal gets its document placed in the campaign folder.
- * Uses a small delay between requests to respect ClickSign rate limits.
- */
 export async function batchCreateClicksignEnvelopes(
     proposalIds: string[],
     options: { forceRecreate?: boolean } = {}
@@ -890,26 +888,32 @@ export async function batchCreateClicksignEnvelopes(
         try {
             const snap = await db.collection("proposals").doc(proposalId).get();
             if (!snap.exists) {
-                results.push({ cpf: '', proposalId, nomeCompleto: null, success: false, message: 'Proposta não encontrada' });
+                results.push({ cpf: "", proposalId, nomeCompleto: null, success: false, message: "Proposta não encontrada" });
                 continue;
             }
 
             const proposal = snap.data() as any;
-            const cpf = proposal.cpf || '';
+            const cpf = proposal.cpf || "";
 
-            // Skip already signed unless force recreate
-            if (proposal.clicksignStatus === 'signed' && !options.forceRecreate) {
+            if ((proposal.clicksignStatus === "signed" || proposal.plugsignStatus === "signed") && !options.forceRecreate) {
                 results.push({
-                    cpf, proposalId, nomeCompleto: proposal.nomeCompleto,
-                    success: true, skipped: true, skipReason: 'Já assinado',
-                    envelopeId: proposal.clicksignEnvelopeId
+                    cpf,
+                    proposalId,
+                    nomeCompleto: proposal.nomeCompleto,
+                    success: true,
+                    skipped: true,
+                    skipReason: "Já assinado",
+                    envelopeId: proposal.clicksignEnvelopeId || proposal.plugsignRequestId
                 });
                 continue;
             }
 
-            // Force recreate: clear existing ClickSign data
-            if (options.forceRecreate && proposal.clicksignEnvelopeId) {
+            if (options.forceRecreate && (proposal.clicksignEnvelopeId || proposal.plugsignRequestId)) {
                 await db.collection("proposals").doc(proposalId).update({
+                    plugsignRequestId: null,
+                    plugsignDocumentKey: null,
+                    plugsignSigningKey: null,
+                    plugsignStatus: null,
                     clicksignEnvelopeId: null,
                     clicksignDocumentId: null,
                     clicksignSignerId: null,
@@ -919,17 +923,18 @@ export async function batchCreateClicksignEnvelopes(
 
             const res = await getOrCreateProposalSignature(proposalId);
             results.push({
-                cpf, proposalId, nomeCompleto: proposal.nomeCompleto,
+                cpf,
+                proposalId,
+                nomeCompleto: proposal.nomeCompleto,
                 success: res.success,
                 envelopeId: res.envelopeId,
                 signerId: res.signerId,
                 message: res.message
             });
 
-            // Small delay to avoid ClickSign rate limiting
             await new Promise(r => setTimeout(r, 800));
         } catch (err: any) {
-            results.push({ cpf: '', proposalId, nomeCompleto: null, success: false, message: err?.message || 'Erro desconhecido' });
+            results.push({ cpf: "", proposalId, nomeCompleto: null, success: false, message: err?.message || "Erro desconhecido" });
         }
     }
 
@@ -944,9 +949,6 @@ export interface BatchResendResult {
     message?: string;
 }
 
-/**
- * Resends WhatsApp signing notifications to all unsigned proposals in the list.
- */
 export async function batchResendWhatsapp(proposalIds: string[]): Promise<BatchResendResult[]> {
     const db = getAdminDb();
     const results: BatchResendResult[] = [];
@@ -954,24 +956,19 @@ export async function batchResendWhatsapp(proposalIds: string[]): Promise<BatchR
     for (const proposalId of proposalIds) {
         const snap = await db.collection("proposals").doc(proposalId).get();
         if (!snap.exists) {
-            results.push({ cpf: '', proposalId, nomeCompleto: null, success: false, message: 'Não encontrada' });
+            results.push({ cpf: "", proposalId, nomeCompleto: null, success: false, message: "Não encontrada" });
             continue;
         }
 
         const proposal = snap.data() as any;
 
-        if (proposal.clicksignStatus === 'signed') {
-            results.push({ cpf: proposal.cpf || '', proposalId, nomeCompleto: proposal.nomeCompleto, success: true, message: 'Já assinado — pulado' });
-            continue;
-        }
-
-        if (!proposal.clicksignEnvelopeId) {
-            results.push({ cpf: proposal.cpf || '', proposalId, nomeCompleto: proposal.nomeCompleto, success: false, message: 'Sem envelope gerado' });
+        if (proposal.clicksignStatus === "signed" || proposal.plugsignStatus === "signed") {
+            results.push({ cpf: proposal.cpf || "", proposalId, nomeCompleto: proposal.nomeCompleto, success: true, message: "Já assinado - pulado" });
             continue;
         }
 
         const res = await resendClicksignWhatsapp(proposalId);
-        results.push({ cpf: proposal.cpf || '', proposalId, nomeCompleto: proposal.nomeCompleto, success: res.success, message: res.message });
+        results.push({ cpf: proposal.cpf || "", proposalId, nomeCompleto: proposal.nomeCompleto, success: res.success, message: res.message });
 
         await new Promise(r => setTimeout(r, 500));
     }
@@ -979,10 +976,6 @@ export async function batchResendWhatsapp(proposalIds: string[]): Promise<BatchR
     return results;
 }
 
-/**
- * Resends WhatsApp signing notifications for ALL pending proposals in a campaign.
- * Skips proposals that are already signed or have no envelope.
- */
 export async function batchResendWhatsappByCampaign(campaignId: string): Promise<{
     total: number;
     sent: number;
@@ -991,20 +984,14 @@ export async function batchResendWhatsappByCampaign(campaignId: string): Promise
     details: BatchResendResult[];
 }> {
     const db = getAdminDb();
-
-    // Find all proposals in this campaign that have an envelope but are not signed
-    const snap = await db.collection('proposals')
-        .where('campaignId', '==', campaignId)
-        .where('clicksignEnvelopeId', '!=', null)
+    const snap = await db.collection("proposals")
+        .where("campaignId", "==", campaignId)
+        .where("clicksignEnvelopeId", "!=", null)
         .get();
 
-    const pending = snap.docs.filter(d => d.data().clicksignStatus !== 'signed');
-
-    console.log(`[Clicksign Batch Resend] Campaign ${campaignId}: ${pending.length} pending out of ${snap.size} with envelopes`);
-
+    const pending = snap.docs.filter(d => d.data().clicksignStatus !== "signed" && d.data().plugsignStatus !== "signed");
     const details: BatchResendResult[] = [];
     let sent = 0;
-    let skipped = 0;
     let errors = 0;
 
     for (const doc of pending) {
@@ -1012,7 +999,7 @@ export async function batchResendWhatsappByCampaign(campaignId: string): Promise
         const res = await resendClicksignWhatsapp(doc.id);
 
         details.push({
-            cpf: proposal.cpf || '',
+            cpf: proposal.cpf || "",
             proposalId: doc.id,
             nomeCompleto: proposal.nomeCompleto || null,
             success: res.success,
@@ -1025,5 +1012,5 @@ export async function batchResendWhatsappByCampaign(campaignId: string): Promise
         await new Promise(r => setTimeout(r, 500));
     }
 
-    return { total: pending.length, sent, skipped, errors, details };
+    return { total: pending.length, sent, skipped: 0, errors, details };
 }

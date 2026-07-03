@@ -12,11 +12,14 @@ import Link from 'next/link';
 export default function CampaignForm({ campaign }: { campaign?: any }) {
     const router = useRouter();
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const inputClassName = "w-full p-3 border rounded-lg bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#002B49] focus:border-[#002B49]";
+    const textareaClassName = `${inputClassName} h-32`;
 
     // Convert array professions back to comma string for editing if needed
     const defaultValues: any = campaign ? {
         ...campaign,
-        professions: Array.isArray(campaign.professions) ? campaign.professions.join(', ') : campaign.professions
+        professions: Array.isArray(campaign.professions) ? campaign.professions.join(', ') : campaign.professions,
+        schools: Array.isArray(campaign.schools) ? campaign.schools.join(', ') : campaign.schools
     } : {
         active: true
     };
@@ -57,7 +60,7 @@ export default function CampaignForm({ campaign }: { campaign?: any }) {
                 <div className="grid grid-cols-2 gap-6">
                     <div className="col-span-2">
                         <label className="block font-bold text-gray-700 mb-2">Nome da Campanha</label>
-                        <input {...register('name')} className="w-full p-3 border rounded-lg" placeholder="Ex: Motoristas SP 2024" />
+                        <input {...register('name')} className={inputClassName} placeholder="Ex: Motoristas SP 2024" />
                         {errors.name && <p className="text-red-500 text-sm">{errors.name.message as string}</p>}
                     </div>
 
@@ -65,7 +68,7 @@ export default function CampaignForm({ campaign }: { campaign?: any }) {
                         <label className="block font-bold text-gray-700 mb-2">Slug (URL)</label>
                         <div className="flex items-center">
                             <span className="p-3 bg-gray-100 border border-r-0 rounded-l-lg text-gray-500">/c/</span>
-                            <input {...register('slug')} className="w-full p-3 border rounded-r-lg" placeholder="motoristas-sp" />
+                            <input {...register('slug')} className={`${inputClassName} rounded-l-none`} placeholder="motoristas-sp" />
                         </div>
                         {errors.slug && <p className="text-red-500 text-sm">{errors.slug.message as string}</p>}
                     </div>
@@ -79,7 +82,7 @@ export default function CampaignForm({ campaign }: { campaign?: any }) {
 
                     <div className="col-span-2">
                         <label className="block font-bold text-gray-700 mb-2">Modelo do Formulário</label>
-                        <select {...register('formType')} className="w-full p-3 border rounded-lg bg-white">
+                        <select {...register('formType')} className={inputClassName}>
                             <option value="coopedu">COOPEDU (Multi-passos Padrão)</option>
                             <option value="coopera">COOPERA (Mediadores Betim/MG)</option>
                         </select>
@@ -89,7 +92,7 @@ export default function CampaignForm({ campaign }: { campaign?: any }) {
 
                 <div>
                     <label className="block font-bold text-gray-700 mb-2">URL do Banner</label>
-                    <input {...register('bannerUrl')} className="w-full p-3 border rounded-lg" placeholder="https://..." />
+                    <input {...register('bannerUrl')} className={inputClassName} placeholder="https://..." />
                     <p className="text-xs text-gray-500 mt-1">Deixe em branco para usar o padrão.</p>
                     {errors.bannerUrl && <p className="text-red-500 text-sm">{errors.bannerUrl.message as string}</p>}
                 </div>
@@ -100,13 +103,13 @@ export default function CampaignForm({ campaign }: { campaign?: any }) {
                 <div className="grid grid-cols-2 gap-6">
                     <div>
                         <label className="block font-bold text-gray-700 mb-2">Client ID</label>
-                        <input {...register('clientId')} className="w-full p-3 border rounded-lg" placeholder="12345" />
+                        <input {...register('clientId')} className={inputClassName} placeholder="12345" />
                         {errors.clientId && <p className="text-red-500 text-sm">{errors.clientId.message as string}</p>}
                     </div>
 
                     <div>
                         <label className="block font-bold text-gray-700 mb-2">Function ID</label>
-                        <input {...register('functionId')} className="w-full p-3 border rounded-lg" placeholder="67890" />
+                        <input {...register('functionId')} className={inputClassName} placeholder="67890" />
                         {errors.functionId && <p className="text-red-500 text-sm">{errors.functionId.message as string}</p>}
                     </div>
 
@@ -123,9 +126,19 @@ export default function CampaignForm({ campaign }: { campaign?: any }) {
                 <h2 className="text-xl font-bold text-[#002B49]">Profissões Permitidas</h2>
                 <div>
                     <label className="block font-bold text-gray-700 mb-2">Lista de Profissões (separadas por vírgula)</label>
-                    <textarea {...register('professions')} className="w-full p-3 border rounded-lg h-32" placeholder="Motorista, Entregador, Motoboy..." />
+                    <textarea {...register('professions')} className={textareaClassName} placeholder="Motorista, Entregador, Motoboy..." />
                     <p className="text-xs text-gray-500 mt-1">Estas opções aparecerão no dropdown do formulário.</p>
                     {errors.professions && <p className="text-red-500 text-sm">{errors.professions.message as string}</p>}
+                </div>
+            </div>
+
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 space-y-6">
+                <h2 className="text-xl font-bold text-[#002B49]">Escolas para Mediadores</h2>
+                <div>
+                    <label className="block font-bold text-gray-700 mb-2">Lista de Escolas (separadas por vírgula)</label>
+                    <textarea {...register('schools')} className={textareaClassName} placeholder="Escola Municipal A, Escola Municipal B, Escola Municipal C" />
+                    <p className="text-xs text-gray-500 mt-1">Estas opções aparecerão no formulário COOPERA/Mediadores, na etapa de análise pedagógica e comportamental.</p>
+                    {errors.schools && <p className="text-red-500 text-sm">{errors.schools.message as string}</p>}
                 </div>
             </div>
 

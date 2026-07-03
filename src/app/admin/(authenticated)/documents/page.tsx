@@ -229,7 +229,7 @@ export default function DocumentsPage() {
     };
 
     const handleSyncStatus = async () => {
-        if (!confirm('Isso vai consultar a API do ClickSign para todos os envelopes pendentes e atualizar o status no sistema. Continuar?')) return;
+        if (!confirm('Isso vai consultar a API do Plugsign para todas as solicitações pendentes e atualizar o status no sistema. Continuar?')) return;
         setIsSyncing(true);
         setSyncResult(null);
         try {
@@ -268,7 +268,7 @@ export default function DocumentsPage() {
                             Documentos em Lote
                         </h1>
                         <p className="text-gray-400 text-sm mt-1">
-                            Gere e envie documentos ClickSign para múltiplas propostas via CSV
+                            Gere e envie documentos Plugsign para múltiplas propostas via CSV
                         </p>
                     </div>
                 </div>
@@ -350,7 +350,7 @@ export default function DocumentsPage() {
                                     Sincronizar Status de Assinatura
                                 </h3>
                                 <p className="text-sm text-gray-500 mt-1">
-                                    Consulta a API do ClickSign para todos os envelopes pendentes e atualiza automaticamente quem já assinou.
+                                    Consulta a API do Plugsign para todas as solicitações pendentes e atualiza automaticamente quem já assinou.
                                     Use isso após envios em lote ou periodicamente para manter o painel atualizado.
                                 </p>
                             </div>
@@ -624,7 +624,7 @@ export default function DocumentsPage() {
                     <div className="bg-white rounded-3xl p-10 max-w-md w-full mx-4 text-center shadow-2xl">
                         <Loader2 size={48} className="animate-spin text-[#002B49] mx-auto mb-4" />
                         <h3 className="text-xl font-black text-[#002B49] mb-2">Gerando documentos...</h3>
-                        <p className="text-gray-500 text-sm">Processando sequencialmente para respeitar os limites da API ClickSign.</p>
+                        <p className="text-gray-500 text-sm">Processando sequencialmente para respeitar os limites da API Plugsign.</p>
                         <p className="text-gray-400 text-xs mt-2">Não feche esta janela.</p>
                     </div>
                 </div>

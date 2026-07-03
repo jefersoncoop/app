@@ -164,7 +164,7 @@ export default function ProposalsPage() {
             // Define columns
             const headers = [
                 "Data", "Nome Completo", "CPF", "Status", "Telefone", "Email",
-                "Cargo/Categoria", "Cidade", "Estado", "CEP", "Logradouro", "Numero", "Bairro", "tamanhoCamisa", "Link", "Status ClickSign"
+                "Cargo/Categoria", "Escola Selecionada", "Cidade", "Estado", "CEP", "Logradouro", "Numero", "Bairro", "tamanhoCamisa", "Link", "Status Plugsign"
             ];
 
             // Map rows
@@ -176,6 +176,7 @@ export default function ProposalsPage() {
                 p.telefone,
                 p.email,
                 p.cargo || p.categoriaFuncao,
+                p.escolaSelecionada,
                 p.cidade,
                 p.estado,
                 p.cep,

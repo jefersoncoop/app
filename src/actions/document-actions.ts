@@ -270,6 +270,7 @@ async function performSyncWithCRM(proposalId: string) {
             "comprovante_residencia": "Files.ComprovanteDeResidenciaLink",
             "comprovante_pis": "Files.NumeroPisPasepNisLink",
             "certidao": "Files.CertidaoDeNascimentoOuCasamentoLink",
+            "certidao_antecedentes_criminais": "Files.CertidaoDeAntecedentesCriminaisLink",
             "curriculo": "Files.CurriculoVitaeLink",
             "diploma": "Files.DiplomaDeGraduacaoLink"
         };
@@ -499,13 +500,27 @@ export async function finalizeUploads(proposalId: string) {
             }
         }
 
-        // Enforce Clicksign signature for standard multi-step forms
+        const documentsSnapshot = await docRef.collection("documents").get();
+        const uploadedTypes = new Set(documentsSnapshot.docs.map(doc => doc.data().type));
+        const requiredDocumentTypes = formType === 'coopera'
+            ? ["identidade_frente", "identidade_verso", "comprovante_pis", "comprovante_residencia", "certidao_antecedentes_criminais"]
+            : ["identidade_frente", "identidade_verso", "comprovante_pis", "comprovante_residencia"];
+        const missingDocument = requiredDocumentTypes.find(type => !uploadedTypes.has(type));
+
+        if (missingDocument) {
+            return {
+                success: false,
+                message: "Envie todos os documentos obrigatórios antes de finalizar."
+            };
+        }
+
+        // Enforce Plugsign signature for standard multi-step forms
         if (formType === 'coopedu' || formType === 'coopera') {
             const isSigned = await verifyProposalSignature(proposalId);
             if (!isSigned) {
                 return {
                     success: false,
-                    message: "A assinatura da proposta via ClickSign é obrigatória para finalizar o envio dos documentos."
+                    message: "A assinatura da proposta via Plugsign é obrigatória para finalizar o envio dos documentos."
                 };
             }
         }
