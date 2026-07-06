@@ -85,6 +85,7 @@ export const proposalSchema = z.object({
     criterioDisponibilidade: z.string().min(1, "Responda sobre a disponibilidade"),
     criterioFormacao: z.string().optional(),
     criterioCapacitacao: z.string().optional(),
+    trabalhaEscolaBetim: z.string().optional(),
     escolaSelecionada: z.string().optional(),
     // Campaign & CRM Data
     campaignId: z.string().optional(),

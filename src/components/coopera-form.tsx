@@ -176,7 +176,7 @@ export default function CooperaFormMaster({ campaign }: { campaign?: any }) {
         { id: 'contato', progress: 50, fields: ['telefone', 'email'] },
         { id: 'profissional', progress: 60, fields: ['escolaridade', 'categoriaFuncao'] },
         { id: 'logistica', progress: 70, fields: ['tamanhoCamisa'] },
-        { id: 'criterios', progress: 85, fields: ['criterioFormacao', 'criterioCapacitacao', 'criterioExperiencia', 'escolaSelecionada'] },
+        { id: 'criterios', progress: 85, fields: ['criterioFormacao', 'criterioCapacitacao', 'criterioExperiencia', 'trabalhaEscolaBetim'] },
         { id: 'termos', progress: 85, fields: ['aceiteConcordancia'] },
         { id: 'lgpd', progress: 90, fields: ['aceiteLGPD'] },
         { id: 'termoadesao', progress: 95, fields: ['aceiteTermoAdessao'] },
@@ -189,12 +189,24 @@ export default function CooperaFormMaster({ campaign }: { campaign?: any }) {
             const isValid = await methods.trigger(currentStepConfig.fields as any);
             if (!isValid) return;
 
-            if (currentStepConfig.id === 'criterios' && schoolOptions.length > 0 && !methods.getValues('escolaSelecionada')) {
-                methods.setError('escolaSelecionada', {
-                    type: 'required',
-                    message: 'Selecione uma escola.'
-                });
-                return;
+            if (currentStepConfig.id === 'criterios' && schoolOptions.length > 0) {
+                const worksAtBetimSchool = methods.getValues('trabalhaEscolaBetim');
+
+                if (!worksAtBetimSchool) {
+                    methods.setError('trabalhaEscolaBetim', {
+                        type: 'required',
+                        message: 'Responda se você trabalha em alguma escola de Betim.'
+                    });
+                    return;
+                }
+
+                if (worksAtBetimSchool === 'Sim' && !methods.getValues('escolaSelecionada')) {
+                    methods.setError('escolaSelecionada', {
+                        type: 'required',
+                        message: 'Selecione uma escola.'
+                    });
+                    return;
+                }
             }
 
             if (currentStepConfig.id === 'cpf' && !existingProposal) {
@@ -504,14 +516,6 @@ export default function CooperaFormMaster({ campaign }: { campaign?: any }) {
                                     <div className="space-y-8">
                                         <h2 className="text-2xl font-bold text-[#002B49]">ANÁLISE PEDAGÓGICA E COMPORTAMENTAL</h2>
 
-                                        {schoolOptions.length > 0 && (
-                                            <SelectField
-                                                name="escolaSelecionada"
-                                                label="Escola pretendida"
-                                                options={schoolOptions}
-                                            />
-                                        )}
-
                                         <div className="space-y-4">
                                             <label className="block text-lg font-bold text-[#002B49]">
                                                 CRITÉRIO AVALIADO: FORMAÇÃO <br />
@@ -546,6 +550,67 @@ export default function CooperaFormMaster({ campaign }: { campaign?: any }) {
                                                 <label className="flex items-center gap-2 cursor-pointer"><input type="radio" {...methods.register("criterioExperiencia")} value="Não" className="w-5 h-5 accent-[#002B49]" /> <span className="text-lg">Não</span></label>
                                             </div>
                                         </div>
+
+                                        {schoolOptions.length > 0 && (
+                                            <div className="space-y-4">
+                                                <label className="block text-lg font-bold text-[#002B49]">
+                                                    CRITÉRIO AVALIADO: EXPERIÊNCIA <br />
+                                                    <span className="text-base font-normal text-gray-700">
+                                                        Atualmente, você está trabalhando em alguma escola no município de Betim como Mediador de Aprendizagem?
+                                                    </span>
+                                                </label>
+                                                <div className="flex gap-6">
+                                                    <label className="flex items-center gap-2 cursor-pointer">
+                                                        <input
+                                                            type="radio"
+                                                            {...methods.register("trabalhaEscolaBetim", {
+                                                                onChange: () => methods.clearErrors("trabalhaEscolaBetim")
+                                                            })}
+                                                            value="Sim"
+                                                            className="w-5 h-5 accent-[#002B49]"
+                                                        />
+                                                        <span className="text-lg">Sim</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer">
+                                                        <input
+                                                            type="radio"
+                                                            {...methods.register("trabalhaEscolaBetim", {
+                                                                onChange: () => {
+                                                                    methods.setValue("escolaSelecionada", "", { shouldValidate: true });
+                                                                    methods.clearErrors(["trabalhaEscolaBetim", "escolaSelecionada"]);
+                                                                }
+                                                            })}
+                                                            value="Não"
+                                                            className="w-5 h-5 accent-[#002B49]"
+                                                        />
+                                                        <span className="text-lg">Não</span>
+                                                    </label>
+                                                </div>
+                                                {methods.formState.errors.trabalhaEscolaBetim && (
+                                                    <p className="text-red-500 text-sm font-semibold">{methods.formState.errors.trabalhaEscolaBetim?.message?.toString()}</p>
+                                                )}
+
+                                                {methods.watch("trabalhaEscolaBetim") === "Sim" && (
+                                                    <div className="space-y-2">
+                                                        <label className="text-lg font-bold text-[#002B49] block">Selecione a escola</label>
+                                                        <select
+                                                            {...methods.register("escolaSelecionada", {
+                                                                onChange: () => methods.clearErrors("escolaSelecionada")
+                                                            })}
+                                                            className={`w-full p-4 border-2 rounded-xl text-lg bg-white transition-all ${methods.formState.errors.escolaSelecionada ? 'border-red-500 bg-red-50' : 'border-gray-200 focus:border-[#002B49] focus:ring-2 focus:ring-[#002B49] focus:outline-none'}`}
+                                                        >
+                                                            <option value="">Selecione...</option>
+                                                            {schoolOptions.map((school: string) => (
+                                                                <option key={school} value={school}>{school}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                )}
+                                                {methods.formState.errors.escolaSelecionada && (
+                                                    <p className="text-red-500 text-sm font-semibold">{methods.formState.errors.escolaSelecionada?.message?.toString()}</p>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
