@@ -388,7 +388,7 @@ export default function CooperaFormMaster({ campaign }: { campaign?: any }) {
                                 {step === 1 && (
                                     <div className="space-y-6">
                                         <div className="bg-blue-50 p-6 rounded-2xl border-l-8 border-[#002B49]">
-                                            <h2 className="text-2xl font-bold text-[#002B49] mb-4">Formulário de Inscrição para Mediadores Pedagógicos (Betim/MG)</h2>
+                                            <h2 className="text-2xl font-bold text-[#002B49] mb-4">Formulário de Inscrição para Mediadores de Aprendizagem (Betim/MG)</h2>
                                             <p className="text-gray-700 leading-relaxed">
                                                 Destacamos que as informações do formulário estão nos termos da Lei Geral de Proteção de Dados (Lei nº 13.709/18); e que serão tratados com as finalidades específicas, prevista nas bases legais da respectiva lei.
                                                 <br /><br />
