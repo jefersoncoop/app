@@ -20,7 +20,7 @@ async function getProposalByToken(token: string) {
     const doc = snapshot.docs[0];
     const data = doc.data() as any;
 
-    const proposal = { id: doc.id, ...data } as { id: string, nomeCompleto: string, expired?: boolean, uploadTokenExpires?: string, status?: string, crmSynced?: boolean, campaignId?: string };
+    const proposal = { id: doc.id, ...data } as { id: string, nomeCompleto: string, expired?: boolean, uploadTokenExpires?: string, status?: string, crmSynced?: boolean, campaignId?: string, whatsappVerified?: boolean };
 
     // Check expiration
     if (proposal.uploadTokenExpires) {
@@ -101,6 +101,7 @@ export default async function UploadPage(props: Params) {
                     proposalId={proposal.id}
                     userName={proposal.nomeCompleto}
                     formType={formType}
+                    initialWhatsappVerified={Boolean(proposal.whatsappVerified)}
                 />
 
                 <div className="p-6 text-center text-gray-500 text-sm">

@@ -3,17 +3,19 @@
 import React, { useState, useEffect } from 'react';
 import UploadZone from './upload-interface';
 import { finalizeUploads, getProposalDocuments } from '@/actions/document-actions';
-import { CheckCircle, Send, Loader2, AlertCircle, HardDrive, MessageCircle } from 'lucide-react';
+import { CheckCircle, Send, Loader2, AlertCircle, HardDrive, MessageCircle, RefreshCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getOrCreateProposalSignature, getProposalSignatureStatus } from '@/actions/clicksign-actions';
+import { sendWhatsappVerificationCode, verifyWhatsappCode } from '@/actions/proposal-actions';
 
 interface UploadManagerProps {
     proposalId: string;
     userName: string;
     formType?: string;
+    initialWhatsappVerified?: boolean;
 }
 
-export default function UploadManager({ proposalId, userName, formType = 'coopedu' }: UploadManagerProps) {
+export default function UploadManager({ proposalId, userName, formType = 'coopedu', initialWhatsappVerified = false }: UploadManagerProps) {
     const [uploadedDocs, setUploadedDocs] = useState<Set<string>>(new Set());
     const [uploadedDocsDetails, setUploadedDocsDetails] = useState<Record<string, { filename: string, hash: string, size: number, url: string, path?: string, id: string }>>({});
     const [loadingExisting, setLoadingExisting] = useState(true);
@@ -26,6 +28,12 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
     const [signatureError, setSignatureError] = useState<string | null>(null);
     const [signatureRequested, setSignatureRequested] = useState(false);
     const [isPollingSignature, setIsPollingSignature] = useState(false);
+    const [whatsappVerified, setWhatsappVerified] = useState(initialWhatsappVerified);
+    const [showWhatsappValidation, setShowWhatsappValidation] = useState(false);
+    const [whatsappCode, setWhatsappCode] = useState('');
+    const [isSendingCode, setIsSendingCode] = useState(false);
+    const [isVerifyingCode, setIsVerifyingCode] = useState(false);
+    const [whatsappMessage, setWhatsappMessage] = useState<string | null>(null);
     const requiresSignature = formType === 'coopedu' || formType === 'coopera';
 
     const BASE_REQUIRED_DOCS = [
@@ -196,7 +204,26 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
         }
     };
 
-    const handleStartSignature = async () => {
+    const handleSendWhatsappCode = async () => {
+        setIsSendingCode(true);
+        setSignatureError(null);
+        setWhatsappMessage(null);
+        try {
+            const result = await sendWhatsappVerificationCode(proposalId);
+            if (result.success) {
+                setWhatsappMessage(result.message || "Código enviado para seu WhatsApp.");
+            } else {
+                setSignatureError(result.message || "Não foi possível enviar o código.");
+            }
+        } catch (err) {
+            console.error("WhatsApp code send error:", err);
+            setSignatureError("Erro de conexão ao enviar código.");
+        } finally {
+            setIsSendingCode(false);
+        }
+    };
+
+    const requestSignature = async () => {
         setSignatureLoading(true);
         setSignatureError(null);
         setShowSignature(true);
@@ -216,6 +243,44 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
             setSignatureError("Erro de conexão ao carregar módulo de assinatura.");
         } finally {
             setSignatureLoading(false);
+        }
+    };
+
+    const handleStartSignature = async () => {
+        if (requiresSignature && !whatsappVerified) {
+            setShowWhatsappValidation(true);
+            await handleSendWhatsappCode();
+            return;
+        }
+
+        await requestSignature();
+    };
+
+    const handleVerifyWhatsappCode = async () => {
+        const cleanCode = whatsappCode.replace(/\D/g, '');
+        if (cleanCode.length !== 6) {
+            setSignatureError("Digite o código de 6 dígitos enviado para seu WhatsApp.");
+            return;
+        }
+
+        setIsVerifyingCode(true);
+        setSignatureError(null);
+        try {
+            const result = await verifyWhatsappCode(proposalId, cleanCode);
+            if (result.success && result.verified) {
+                setWhatsappVerified(true);
+                setShowWhatsappValidation(false);
+                setWhatsappCode('');
+                setWhatsappMessage("WhatsApp validado. Gerando proposta de assinatura...");
+                await requestSignature();
+            } else {
+                setSignatureError(result.message || "Código inválido.");
+            }
+        } catch (err) {
+            console.error("WhatsApp code verification error:", err);
+            setSignatureError("Erro de conexão ao validar código.");
+        } finally {
+            setIsVerifyingCode(false);
         }
     };
 
@@ -275,6 +340,81 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
                     </button>
                 </div>
             </motion.div>
+        );
+    }
+
+    if (showWhatsappValidation) {
+        return (
+            <div className="space-y-6">
+                <div className="bg-white p-8 rounded-3xl shadow-md border border-gray-100 text-center space-y-6">
+                    <div className="flex justify-center">
+                        <div className="bg-green-100 rounded-full p-5">
+                            <MessageCircle className="text-green-600" size={44} />
+                        </div>
+                    </div>
+                    <div>
+                        <h3 className="text-2xl font-black text-[#002B49] uppercase italic tracking-tighter">
+                            Valide seu WhatsApp
+                        </h3>
+                        <p className="text-gray-500 text-sm mt-2">
+                            Para enviar a proposta de assinatura com segurança, informe o código recebido no WhatsApp.
+                        </p>
+                    </div>
+
+                    {whatsappMessage && (
+                        <div className="bg-green-50 p-4 rounded-2xl border border-green-200 text-green-800 text-sm font-semibold">
+                            {whatsappMessage}
+                        </div>
+                    )}
+
+                    {signatureError && (
+                        <div className="bg-red-50 p-4 rounded-2xl border border-red-100 text-red-700 text-sm font-semibold">
+                            {signatureError}
+                        </div>
+                    )}
+
+                    <div className="space-y-3 text-left">
+                        <label className="text-sm font-bold text-[#002B49] uppercase tracking-wide block">Código recebido</label>
+                        <input
+                            value={whatsappCode}
+                            onChange={(event) => setWhatsappCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            placeholder="000000"
+                            className="w-full p-4 border-2 rounded-xl text-3xl text-center tracking-[0.35em] font-black transition-all border-gray-200 focus:border-[#CCFF00] focus:ring-2 focus:ring-[#CCFF00] focus:outline-none"
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <button
+                            type="button"
+                            onClick={handleSendWhatsappCode}
+                            disabled={isSendingCode || isVerifyingCode}
+                            className="border-2 border-[#002B49] text-[#002B49] py-4 rounded-xl font-black flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                        >
+                            {isSendingCode ? <Loader2 className="animate-spin" size={20} /> : <RefreshCcw size={20} />}
+                            REENVIAR CÓDIGO
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleVerifyWhatsappCode}
+                            disabled={isVerifyingCode || whatsappCode.length !== 6}
+                            className="bg-[#CCFF00] text-[#002B49] py-4 rounded-xl font-black flex items-center justify-center gap-2 hover:bg-[#b8e600] transition-colors disabled:opacity-50"
+                        >
+                            {isVerifyingCode ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle size={20} />}
+                            VALIDAR E ASSINAR
+                        </button>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => { setShowWhatsappValidation(false); setSignatureError(null); }}
+                        className="text-gray-500 text-sm font-bold hover:text-gray-700"
+                    >
+                        Voltar para os documentos
+                    </button>
+                </div>
+            </div>
         );
     }
 

@@ -131,6 +131,7 @@ export async function submitProposal(data: ProposalFormData, options?: { notifyI
                 uploadTokenExpires,
                 createdAt: new Date().toISOString(),
                 status: "pending_documents",
+                whatsappVerified: false,
                 FLG_CADASTRO_SITE: 0
             });
             transaction.set(lockRef, {
