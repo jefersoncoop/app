@@ -4,6 +4,7 @@ import { getAdminDb } from "@/lib/firebase-admin";
 import { proposalSchema, ProposalFormData } from "@/lib/schemas/proposal-schema";
 import { createHash, randomInt, randomUUID } from 'crypto';
 import { getCampaignById } from "./campaign-actions";
+import type { DocumentData, Firestore, QueryDocumentSnapshot, Transaction } from "firebase-admin/firestore";
 
 export type SubmitResult = {
     success: boolean;
@@ -20,6 +21,36 @@ type WhatsappVerificationResult = {
     verified?: boolean;
 };
 
+function onlyDigits(value: string) {
+    return (value || "").replace(/\D/g, "");
+}
+
+function formatCpf(cpf: string) {
+    const digits = onlyDigits(cpf);
+    if (digits.length !== 11) return cpf;
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
+function cpfQueryValues(cpf: string) {
+    return Array.from(new Set([cpf, onlyDigits(cpf), formatCpf(cpf)].filter(Boolean)));
+}
+
+async function findExistingProposalByCPF(db: Firestore, cpf: string, excludeProposalId?: string): Promise<QueryDocumentSnapshot<DocumentData> | null> {
+    const cpfDigits = onlyDigits(cpf);
+
+    if (cpfDigits.length === 11) {
+        const digitsSnapshot = await db.collection("proposals").where("cpfDigits", "==", cpfDigits).limit(1).get();
+        const matchingDoc = digitsSnapshot.docs.find(doc => doc.id !== excludeProposalId);
+        if (matchingDoc) return matchingDoc;
+    }
+
+    const values = cpfQueryValues(cpf);
+    if (!values.length) return null;
+
+    const snapshot = await db.collection("proposals").where("cpf", "in", values).limit(10).get();
+    return snapshot.docs.find(doc => doc.id !== excludeProposalId) || null;
+}
+
 function normalizePhone(phone: string) {
     const phoneDigits = (phone || "").replace(/\D/g, '');
     return phoneDigits.startsWith('55') && phoneDigits.length > 11
@@ -34,10 +65,9 @@ function hashWhatsappCode(code: string) {
 export async function checkExistingProposalByCPF(cpf: string): Promise<SubmitResult> {
     try {
         const db = getAdminDb();
-        const snapshot = await db.collection("proposals").where("cpf", "==", cpf).limit(1).get();
+        const doc = await findExistingProposalByCPF(db, cpf);
 
-        if (!snapshot.empty) {
-            const doc = snapshot.docs[0];
+        if (doc) {
             return {
                 success: true,
                 existingProposal: { id: doc.id, ...doc.data() }
@@ -61,6 +91,7 @@ export async function submitProposal(data: ProposalFormData, options?: { notifyI
         }
 
         const authorizedData = parsed.data;
+        const cpfDigits = onlyDigits(authorizedData.cpf);
 
         // 2. Generate System Metadata
         const uploadToken = randomUUID();
@@ -69,14 +100,54 @@ export async function submitProposal(data: ProposalFormData, options?: { notifyI
 
         // 3. Save to Firestore
         const db = getAdminDb();
-        const docRef = await db.collection("proposals").add({
-            ...authorizedData,
-            uploadToken,
-            uploadTokenExpires,
-            createdAt: new Date().toISOString(),
-            status: "pending_documents",
-            FLG_CADASTRO_SITE: 0
+        const docRef = db.collection("proposals").doc();
+        const lockRef = db.collection("proposalCpfLocks").doc(cpfDigits);
+
+        const duplicate = await db.runTransaction(async (transaction: Transaction) => {
+            const lockDoc = await transaction.get(lockRef);
+            if (lockDoc.exists) {
+                const lockedProposalId = lockDoc.data()?.proposalId;
+                if (lockedProposalId) {
+                    const lockedProposal = await transaction.get(db.collection("proposals").doc(lockedProposalId));
+                    if (lockedProposal.exists) return { id: lockedProposal.id, ...lockedProposal.data() };
+                }
+                return { id: null };
+            }
+
+            const existingDoc = await findExistingProposalByCPF(db, authorizedData.cpf);
+            if (existingDoc) {
+                transaction.set(lockRef, {
+                    cpfDigits,
+                    proposalId: existingDoc.id,
+                    createdAt: new Date().toISOString()
+                });
+                return { id: existingDoc.id, ...existingDoc.data() };
+            }
+
+            transaction.set(docRef, {
+                ...authorizedData,
+                cpfDigits,
+                uploadToken,
+                uploadTokenExpires,
+                createdAt: new Date().toISOString(),
+                status: "pending_documents",
+                FLG_CADASTRO_SITE: 0
+            });
+            transaction.set(lockRef, {
+                cpfDigits,
+                proposalId: docRef.id,
+                createdAt: new Date().toISOString()
+            });
+            return null;
         });
+
+        if (duplicate) {
+            return {
+                success: false,
+                message: "CPF já possui uma proposta cadastrada.",
+                existingProposal: duplicate
+            };
+        }
 
         console.log(`Proposal created. ID: ${docRef.id}`);
 
@@ -247,10 +318,19 @@ export async function updateProposal(proposalId: string, data: ProposalFormData)
         }
 
         const authorizedData = parsed.data;
+        const cpfDigits = onlyDigits(authorizedData.cpf);
 
         // 2. Save to Firestore
         const db = getAdminDb();
         const docRef = db.collection("proposals").doc(proposalId);
+        const duplicateDoc = await findExistingProposalByCPF(db, authorizedData.cpf, proposalId);
+        if (duplicateDoc) {
+            return {
+                success: false,
+                message: "CPF já possui uma proposta cadastrada.",
+                existingProposal: { id: duplicateDoc.id, ...duplicateDoc.data() }
+            };
+        }
         
         let uploadToken: string | undefined;
         const existingDoc = await docRef.get();
@@ -260,6 +340,7 @@ export async function updateProposal(proposalId: string, data: ProposalFormData)
 
         await docRef.update({
             ...authorizedData,
+            cpfDigits,
             updatedAt: new Date().toISOString()
         });
 
@@ -585,25 +666,48 @@ export async function batchImportProposals(proposals: any[]) {
 
         for (const data of proposals) {
             try {
-                // Simple CPF uniqueness check
-                const snapshot = await db.collection("proposals").where("cpf", "==", data.cpf).limit(1).get();
-                if (!snapshot.empty) {
+                const cpfDigits = onlyDigits(data.cpf);
+                const docRef = db.collection("proposals").doc();
+                const lockRef = db.collection("proposalCpfLocks").doc(cpfDigits);
+                const duplicate = await db.runTransaction(async (transaction: Transaction) => {
+                    const lockDoc = await transaction.get(lockRef);
+                    if (lockDoc.exists) return true;
+
+                    const existingDoc = await findExistingProposalByCPF(db, data.cpf);
+                    if (existingDoc) {
+                        transaction.set(lockRef, {
+                            cpfDigits,
+                            proposalId: existingDoc.id,
+                            createdAt: new Date().toISOString()
+                        });
+                        return true;
+                    }
+
+                    const uploadToken = randomUUID();
+                    const uploadTokenExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+                    transaction.set(docRef, {
+                        ...data,
+                        cpfDigits,
+                        uploadToken,
+                        uploadTokenExpires,
+                        createdAt: new Date().toISOString(),
+                        status: "pending_documents",
+                        FLG_CADASTRO_SITE: 0
+                    });
+                    transaction.set(lockRef, {
+                        cpfDigits,
+                        proposalId: docRef.id,
+                        createdAt: new Date().toISOString()
+                    });
+                    return false;
+                });
+
+                if (duplicate) {
                     results.failCount++;
                     results.errors.push(`CPF ${data.cpf} já cadastrado.`);
                     continue;
                 }
-
-                const uploadToken = randomUUID();
-                const uploadTokenExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-
-                await db.collection("proposals").add({
-                    ...data,
-                    uploadToken,
-                    uploadTokenExpires,
-                    createdAt: new Date().toISOString(),
-                    status: "pending_documents",
-                    FLG_CADASTRO_SITE: 0
-                });
 
                 results.successCount++;
             } catch (err: any) {
