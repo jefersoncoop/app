@@ -2,7 +2,12 @@
 
 import { getProposalById, resendInitialNotification } from '@/actions/proposal-actions';
 import { syncProposalWithCRM, resendFinalNotification, deleteProposalDocument } from '@/actions/document-actions';
-import { resendClicksignWhatsapp, forceCreateClicksignEnvelope, getClicksignSignedDocumentUrl } from '@/actions/clicksign-actions';
+import {
+    resendClicksignWhatsapp,
+    forceCreateClicksignEnvelope,
+    getClicksignSignedDocumentUrl
+} from '@/actions/clicksign-actions';
+import { PROPOSAL_TEMPLATE_OPTIONS, type ProposalTemplateId } from '@/lib/proposal-templates';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ChevronLeft, FileText, Download, User, Phone, MapPin, Briefcase, Send, CheckCircle2, AlertCircle, Loader2, Bell, RotateCw, LinkIcon, Check, Trash2, AlertTriangle, PenLine, MessageCircle } from 'lucide-react';
@@ -34,6 +39,7 @@ export default function ProposalDetailPage() {
     const [isGeneratingDoc, setIsGeneratingDoc] = useState(false);
     const [generateDocResult, setGenerateDocResult] = useState<{ success: boolean, message: string } | null>(null);
     const [isDownloadingDoc, setIsDownloadingDoc] = useState(false);
+    const [selectedTemplateId, setSelectedTemplateId] = useState<ProposalTemplateId>(PROPOSAL_TEMPLATE_OPTIONS[0].id);
 
     const handleDeleteDoc = async (docId: string, docType: string, storagePath?: string) => {
         if (!confirm("Tem certeza que deseja excluir permanentemente este documento anexado?")) return;
@@ -66,6 +72,10 @@ export default function ProposalDetailPage() {
             setLoading(true);
             const data = await getProposalById(id as string);
             setProposal(data);
+            const savedTemplateId = (data as Record<string, unknown> | null)?.proposalTemplateId;
+            if (typeof savedTemplateId === 'string' && PROPOSAL_TEMPLATE_OPTIONS.some(template => template.id === savedTemplateId)) {
+                setSelectedTemplateId(savedTemplateId as ProposalTemplateId);
+            }
             setLoading(false);
         }
         if (id) fetchProposal();
@@ -159,7 +169,9 @@ export default function ProposalDetailPage() {
         setIsGeneratingDoc(true);
         setGenerateDocResult(null);
         try {
-            const result = await forceCreateClicksignEnvelope(id as string);
+            const result = await forceCreateClicksignEnvelope(id as string, {
+                templateId: selectedTemplateId
+            });
             setGenerateDocResult({ success: result.success, message: result.message || (result.success ? 'Solicitação criada com sucesso!' : 'Falha ao criar solicitação') });
             if (result.success) {
                 setTimeout(() => window.location.reload(), 1500);
@@ -249,6 +261,20 @@ export default function ProposalDetailPage() {
                                 proposal.status === 'documents_received' ? 'Documentos Recebidos' : 'Pendente'}
                         </div>
                         <div className="flex flex-col md:flex-row gap-3">
+                            <label className="min-w-[240px]">
+                                <span className="sr-only">Modelo do documento</span>
+                                <select
+                                    value={selectedTemplateId}
+                                    onChange={(event) => setSelectedTemplateId(event.target.value as ProposalTemplateId)}
+                                    className="w-full h-full rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-bold text-white outline-none transition-all hover:bg-white/20 focus:ring-2 focus:ring-[#CCFF00]"
+                                >
+                                    {PROPOSAL_TEMPLATE_OPTIONS.map(template => (
+                                        <option key={template.id} value={template.id} className="text-[#002B49]">
+                                            {template.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
                             <button
                                 onClick={handleCopyLink}
                                 className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all border ${copied ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-white/10 text-white hover:bg-white/20 border-white/10'}`}
@@ -362,6 +388,14 @@ export default function ProposalDetailPage() {
                         <div>
                             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Status Plugsign</p>
                             <p className="font-bold text-[#002B49]">{proposal.clicksignStatus || 'pending'}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Modelo usado</p>
+                            <p className="font-bold text-[#002B49]">{proposal.proposalTemplateLabel || 'Padrão - PORPOSTAV1'}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pasta Plugsign</p>
+                            <p className="font-bold text-[#002B49]">{proposal.plugsignFolderCampaignName || 'Sem campanha'}</p>
                         </div>
                     </div>
 

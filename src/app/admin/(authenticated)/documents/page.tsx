@@ -17,6 +17,7 @@ import {
     type BatchResendResult,
     type DocumentDashboardStats
 } from '@/actions/clicksign-actions';
+import { PROPOSAL_TEMPLATE_OPTIONS, type ProposalTemplateId } from '@/lib/proposal-templates';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -110,6 +111,7 @@ export default function DocumentsPage() {
     const [syncResult, setSyncResult] = useState<{ checked: number; nowSigned: number; stillPending: number; errors: number } | null>(null);
     const [dashboardStats, setDashboardStats] = useState<DocumentDashboardStats | null>(null);
     const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
+    const [selectedTemplateId, setSelectedTemplateId] = useState<ProposalTemplateId>(PROPOSAL_TEMPLATE_OPTIONS[0].id);
     const fileRef = useRef<HTMLInputElement>(null);
 
     const loadDashboardStats = useCallback(async () => {
@@ -188,7 +190,9 @@ export default function DocumentsPage() {
 
         const proposalIds = selectedRows.map(r => r.proposalId!);
 
-        const batchResults: BatchCreateResult[] = await batchCreateClicksignEnvelopes(proposalIds);
+        const batchResults: BatchCreateResult[] = await batchCreateClicksignEnvelopes(proposalIds, {
+            templateId: selectedTemplateId
+        });
 
         const finalResults: ProcessResult[] = batchResults.map(r => ({
             cpf: r.cpf,
@@ -389,6 +393,19 @@ export default function DocumentsPage() {
                         Upload do arquivo CSV
                     </h2>
 
+                    <label className="block">
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Modelo do documento para assinatura</span>
+                        <select
+                            value={selectedTemplateId}
+                            onChange={(event) => setSelectedTemplateId(event.target.value as ProposalTemplateId)}
+                            className="mt-2 w-full max-w-md rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-[#002B49] focus:outline-none focus:ring-2 focus:ring-[#CCFF00]"
+                        >
+                            {PROPOSAL_TEMPLATE_OPTIONS.map(template => (
+                                <option key={template.id} value={template.id}>{template.label}</option>
+                            ))}
+                        </select>
+                    </label>
+
                     {/* Drop zone */}
                     <div
                         onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
@@ -456,6 +473,15 @@ export default function DocumentsPage() {
                             Revisão — {reviewRows.length} CPFs
                         </h2>
                         <div className="flex gap-3">
+                            <select
+                                value={selectedTemplateId}
+                                onChange={(event) => setSelectedTemplateId(event.target.value as ProposalTemplateId)}
+                                className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-[#002B49] focus:outline-none focus:ring-2 focus:ring-[#CCFF00]"
+                            >
+                                {PROPOSAL_TEMPLATE_OPTIONS.map(template => (
+                                    <option key={template.id} value={template.id}>{template.label}</option>
+                                ))}
+                            </select>
                             <button
                                 onClick={() => { setStep('upload'); setReviewRows([]); }}
                                 className="text-sm text-gray-500 hover:text-gray-700 font-bold"

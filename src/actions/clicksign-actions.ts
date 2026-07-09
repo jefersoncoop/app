@@ -3,11 +3,15 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getAdminDb } from "@/lib/firebase-admin";
+import {
+    DEFAULT_PROPOSAL_TEMPLATE_ID,
+    PROPOSAL_TEMPLATE_OPTIONS,
+    type ProposalTemplateId
+} from "@/lib/proposal-templates";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 
 const PLUGSIGN_API_URL = process.env.PLUGSIGN_API_URL || "https://app.plugsign.com.br";
-const PROPOSAL_TEMPLATE_PATH = path.join(process.cwd(), "PORPOSTAV1.docx");
 const SIGNED_STATUSES = new Set(["signed"]);
 const PENDING_STATUS = "pending";
 
@@ -21,6 +25,12 @@ interface ClickSignResponse {
     status?: string;
     errors?: any;
 }
+
+type SignatureOptions = {
+    requireWhatsappVerified?: boolean;
+    autoResendWhatsapp?: boolean;
+    templateId?: ProposalTemplateId;
+};
 
 type ProposalSignatureStatus = {
     success: boolean;
@@ -97,6 +107,16 @@ function sanitizeFilename(value: string) {
         .trim()
         .replace(/\s+/g, " ")
         .slice(0, 80) || "Associado";
+}
+
+function resolveProposalTemplate(templateId?: unknown) {
+    const resolved = PROPOSAL_TEMPLATE_OPTIONS.find(template => template.id === templateId)
+        || PROPOSAL_TEMPLATE_OPTIONS.find(template => template.id === DEFAULT_PROPOSAL_TEMPLATE_ID)!;
+
+    return {
+        ...resolved,
+        path: path.join(process.cwd(), resolved.filename)
+    };
 }
 
 function formatBirthdateForPlugsign(value: unknown) {
@@ -256,8 +276,9 @@ function appendFormData(formData: FormData, key: string, value: unknown) {
     formData.append(key, typeof value === "boolean" ? (value ? "1" : "0") : String(value));
 }
 
-async function renderProposalDocx(proposal: any) {
-    const template = await fs.readFile(PROPOSAL_TEMPLATE_PATH);
+async function renderProposalDocx(proposal: any, templateId?: ProposalTemplateId) {
+    const proposalTemplate = resolveProposalTemplate(templateId || proposal.proposalTemplateId);
+    const template = await fs.readFile(proposalTemplate.path);
     const zip = new PizZip(template);
     const doc = new Docxtemplater(zip, {
         delimiters: {
@@ -314,7 +335,7 @@ async function getOrCreateCampaignFolder(campaignId: string, campaignName: strin
     }
 }
 
-async function getCampaignFolderId(proposal: any) {
+async function getCampaignFolder(proposal: any): Promise<{ folderId: number; campaignId: string; campaignName: string } | null> {
     if (!proposal.campaignId || proposal.campaignId === "uncategorized") return null;
 
     const db = getAdminDb();
@@ -323,7 +344,8 @@ async function getCampaignFolderId(proposal: any) {
         ? (campaignSnap.data()?.name || campaignSnap.data()?.titulo || `Campanha ${proposal.campaignId}`)
         : `Campanha ${proposal.campaignId}`;
 
-    return getOrCreateCampaignFolder(proposal.campaignId, campaignName);
+    const folderId = await getOrCreateCampaignFolder(proposal.campaignId, campaignName);
+    return folderId ? { folderId, campaignId: proposal.campaignId, campaignName } : null;
 }
 
 async function getPlugsignRequest(signingKey: string): Promise<PlugsignRequest | null> {
@@ -363,7 +385,7 @@ async function markSignedIfNeeded(proposalId: string, request: PlugsignRequest) 
 
 export async function getOrCreateProposalSignature(
     proposalId: string,
-    options?: { requireWhatsappVerified?: boolean; autoResendWhatsapp?: boolean }
+    options?: SignatureOptions
 ): Promise<ClickSignResponse> {
     try {
         const db = getAdminDb();
@@ -427,12 +449,13 @@ export async function getOrCreateProposalSignature(
             }
         }
 
-        const folderId = await getCampaignFolderId(proposal);
-        const docxBuffer = await renderProposalDocx(proposal);
+        const selectedTemplate = resolveProposalTemplate(options?.templateId || proposal.proposalTemplateId);
+        const campaignFolder = await getCampaignFolder(proposal);
+        const docxBuffer = await renderProposalDocx(proposal, selectedTemplate.id);
         const filename = `Proposta de Adesao - ${sanitizeFilename(proposal.nomeCompleto || "Associado")}.docx`;
 
         const payload = {
-            ...(folderId && { folder: folderId }),
+            ...(campaignFolder?.folderId && { folder: campaignFolder.folderId }),
             name: filename,
             chain: false,
             silent_mode: true,
@@ -509,6 +532,11 @@ export async function getOrCreateProposalSignature(
             : { success: false, message: "Plugsign não retornou o link de assinatura no modo silencioso." };
 
         await docRef.update({
+            proposalTemplateId: selectedTemplate.id,
+            proposalTemplateLabel: selectedTemplate.label,
+            plugsignFolderId: campaignFolder?.folderId || null,
+            plugsignFolderCampaignId: campaignFolder?.campaignId || null,
+            plugsignFolderCampaignName: campaignFolder?.campaignName || null,
             plugsignRequestId: String(request.id),
             plugsignDocumentKey: request.document,
             plugsignSigningKey: request.signing_key,
@@ -567,7 +595,10 @@ export async function getProposalSignatureStatus(proposalId: string): Promise<Pr
     }
 }
 
-export async function forceCreateClicksignEnvelope(proposalId: string): Promise<ClickSignResponse> {
+export async function forceCreateClicksignEnvelope(
+    proposalId: string,
+    options: { templateId?: ProposalTemplateId } = {}
+): Promise<ClickSignResponse> {
     try {
         const db = getAdminDb();
         const docRef = db.collection("proposals").doc(proposalId);
@@ -585,13 +616,18 @@ export async function forceCreateClicksignEnvelope(proposalId: string): Promise<
             plugsignStatus: null,
             plugsignWhatsappSentAt: null,
             plugsignWhatsappError: null,
+            proposalTemplateId: options.templateId || null,
+            proposalTemplateLabel: options.templateId ? resolveProposalTemplate(options.templateId).label : null,
+            plugsignFolderId: null,
+            plugsignFolderCampaignId: null,
+            plugsignFolderCampaignName: null,
             clicksignEnvelopeId: null,
             clicksignDocumentId: null,
             clicksignSignerId: null,
             clicksignStatus: null
         });
 
-        return await getOrCreateProposalSignature(proposalId);
+        return await getOrCreateProposalSignature(proposalId, { templateId: options.templateId });
     } catch (error: any) {
         console.error("[Plugsign] forceCreateClicksignEnvelope failed:", error);
         return {
@@ -879,7 +915,7 @@ export interface BatchCreateResult {
 
 export async function batchCreateClicksignEnvelopes(
     proposalIds: string[],
-    options: { forceRecreate?: boolean } = {}
+    options: { forceRecreate?: boolean; templateId?: ProposalTemplateId } = {}
 ): Promise<BatchCreateResult[]> {
     const db = getAdminDb();
     const results: BatchCreateResult[] = [];
@@ -913,7 +949,15 @@ export async function batchCreateClicksignEnvelopes(
                     plugsignRequestId: null,
                     plugsignDocumentKey: null,
                     plugsignSigningKey: null,
+                    plugsignSigningUrl: null,
                     plugsignStatus: null,
+                    plugsignWhatsappSentAt: null,
+                    plugsignWhatsappError: null,
+                    proposalTemplateId: options.templateId || null,
+                    proposalTemplateLabel: options.templateId ? resolveProposalTemplate(options.templateId).label : null,
+                    plugsignFolderId: null,
+                    plugsignFolderCampaignId: null,
+                    plugsignFolderCampaignName: null,
                     clicksignEnvelopeId: null,
                     clicksignDocumentId: null,
                     clicksignSignerId: null,
@@ -921,7 +965,7 @@ export async function batchCreateClicksignEnvelopes(
                 });
             }
 
-            const res = await getOrCreateProposalSignature(proposalId);
+            const res = await getOrCreateProposalSignature(proposalId, { templateId: options.templateId });
             results.push({
                 cpf,
                 proposalId,
