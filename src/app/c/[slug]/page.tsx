@@ -33,7 +33,7 @@ export default async function CampaignPage(props: Params) {
 
     return (
         <main className="min-h-screen bg-gray-50 flex flex-col justify-center">
-            {campaign.formType === 'coopera' ? (
+            {campaign.formType === 'coopera' || campaign.formType === 'coopera_cadastro_reserva' ? (
                 <CooperaFormMaster campaign={campaign} />
             ) : (
                 <CoopeduFormMaster campaign={campaign} />

@@ -163,7 +163,7 @@ export async function submitProposal(data: ProposalFormData, options?: { notifyI
                 const campaign = await getCampaignById(authorizedData.campaignId);
                 if (campaign) {
                     syncCRM = campaign.syncCRM !== false; // Default true if field missing or true
-                    if (campaign.formType === 'coopera') {
+                    if (campaign.formType === 'coopera' || campaign.formType === 'coopera_cadastro_reserva') {
                         endpoint = "https://webatende.coopedu.com.br:3000/api/external/enviodocs";
                     }
                 }
@@ -430,7 +430,7 @@ export async function resendInitialNotification(proposalId: string) {
             const campaign = await getCampaignById(data.campaignId);
             if (campaign) {
                 syncCRM = campaign.syncCRM !== false;
-                if (campaign.formType === 'coopera') {
+                if (campaign.formType === 'coopera' || campaign.formType === 'coopera_cadastro_reserva') {
                     endpoint = "https://webatende.coopedu.com.br:3000/api/external/enviodocs";
                 }
             }

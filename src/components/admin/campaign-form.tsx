@@ -85,6 +85,7 @@ export default function CampaignForm({ campaign }: { campaign?: any }) {
                         <select {...register('formType')} className={inputClassName}>
                             <option value="coopedu">COOPEDU (Multi-passos Padrão)</option>
                             <option value="coopera">COOPERA (Mediadores Betim/MG)</option>
+                            <option value="coopera_cadastro_reserva">COOPERA (Mediadores - Cadastro Reserva)</option>
                         </select>
                         {errors.formType && <p className="text-red-500 text-sm">{errors.formType.message as string}</p>}
                     </div>

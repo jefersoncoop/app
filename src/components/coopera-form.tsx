@@ -151,7 +151,11 @@ export default function CooperaFormMaster({ campaign }: { campaign?: any }) {
     const [isSendingCode, setIsSendingCode] = useState(false);
     const [isVerifyingCode, setIsVerifyingCode] = useState(false);
     const [whatsappMessage, setWhatsappMessage] = useState<string | null>(null);
-    const schoolOptions = Array.isArray(campaign?.schools) ? campaign.schools : [];
+    const isCadastroReserva = campaign?.formType === 'coopera_cadastro_reserva';
+    const schoolOptions = !isCadastroReserva && Array.isArray(campaign?.schools) ? campaign.schools : [];
+    const introTitle = isCadastroReserva
+        ? 'Formulário de Inscrição para Cadastro Reserva de Mediadores de Aprendizagem (Betim/MG)'
+        : 'Formulário de Inscrição para Mediadores de Aprendizagem (Betim/MG)';
 
     const methods = useForm<ProposalFormData>({
         resolver: zodResolver(proposalSchema),
@@ -388,7 +392,7 @@ export default function CooperaFormMaster({ campaign }: { campaign?: any }) {
                                 {step === 1 && (
                                     <div className="space-y-6">
                                         <div className="bg-blue-50 p-6 rounded-2xl border-l-8 border-[#002B49]">
-                                            <h2 className="text-2xl font-bold text-[#002B49] mb-4">Formulário de Inscrição para Mediadores de Aprendizagem (Betim/MG)</h2>
+                                            <h2 className="text-2xl font-bold text-[#002B49] mb-4">{introTitle}</h2>
                                             <p className="text-gray-700 leading-relaxed">
                                                 Destacamos que as informações do formulário estão nos termos da Lei Geral de Proteção de Dados (Lei nº 13.709/18); e que serão tratados com as finalidades específicas, prevista nas bases legais da respectiva lei.
                                                 <br /><br />
@@ -551,7 +555,7 @@ export default function CooperaFormMaster({ campaign }: { campaign?: any }) {
                                             </div>
                                         </div>
 
-                                        {schoolOptions.length > 0 && (
+                                        {!isCadastroReserva && schoolOptions.length > 0 && (
                                             <div className="space-y-4">
                                                 <label className="block text-lg font-bold text-[#002B49]">
                                                     CRITÉRIO AVALIADO: EXPERIÊNCIA <br />

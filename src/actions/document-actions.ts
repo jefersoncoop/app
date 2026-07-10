@@ -502,7 +502,8 @@ export async function finalizeUploads(proposalId: string) {
 
         const documentsSnapshot = await docRef.collection("documents").get();
         const uploadedTypes = new Set(documentsSnapshot.docs.map(doc => doc.data().type));
-        const requiredDocumentTypes = formType === 'coopera'
+        const isCooperaForm = formType === 'coopera' || formType === 'coopera_cadastro_reserva';
+        const requiredDocumentTypes = isCooperaForm
             ? ["identidade_frente", "identidade_verso", "comprovante_pis", "comprovante_residencia", "certidao_antecedentes_criminais"]
             : ["identidade_frente", "identidade_verso", "comprovante_pis", "comprovante_residencia"];
         const missingDocument = requiredDocumentTypes.find(type => !uploadedTypes.has(type));
@@ -515,7 +516,7 @@ export async function finalizeUploads(proposalId: string) {
         }
 
         // Enforce Plugsign signature for standard multi-step forms
-        if (formType === 'coopedu' || formType === 'coopera') {
+        if (formType === 'coopedu' || isCooperaForm) {
             const isSigned = await verifyProposalSignature(proposalId);
             if (!isSigned) {
                 return {

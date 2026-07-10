@@ -26,7 +26,7 @@ export const campaignSchema = z.object({
         return val;
     }).pipe(z.array(z.string())),
     active: z.boolean().default(true),
-    formType: z.enum(['coopedu', 'coopera']).default('coopedu'),
+    formType: z.enum(['coopedu', 'coopera', 'coopera_cadastro_reserva']).default('coopedu'),
     syncCRM: z.boolean().default(true),
 });
 

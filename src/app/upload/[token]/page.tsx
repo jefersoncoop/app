@@ -48,7 +48,7 @@ export default async function UploadPage(props: Params) {
         if (campDoc.exists) {
             const campData = campDoc.data();
             formType = campData?.formType || 'coopedu';
-            if (formType === 'coopera') {
+            if (formType === 'coopera' || formType === 'coopera_cadastro_reserva') {
                 campaignName = 'FORMULÁRIO DIGITAL';
             }
         }
@@ -82,7 +82,8 @@ export default async function UploadPage(props: Params) {
         );
     }
 
-    const isCoopera = formType === 'coopera';
+    const isCoopera = formType === 'coopera' || formType === 'coopera_cadastro_reserva';
+    const uploadFormType = isCoopera ? 'coopera' : formType;
 
     return (
         <div className={`min-h-screen ${isCoopera ? 'bg-blue-50' : 'bg-[#F0F4F8]'} font-sans pb-20`}>
@@ -100,7 +101,7 @@ export default async function UploadPage(props: Params) {
                 <UploadManager
                     proposalId={proposal.id}
                     userName={proposal.nomeCompleto}
-                    formType={formType}
+                    formType={uploadFormType}
                     initialWhatsappVerified={Boolean(proposal.whatsappVerified)}
                 />
 
