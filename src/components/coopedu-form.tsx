@@ -843,6 +843,7 @@ export default function CoopeduFormMaster({ campaign }: { campaign?: any }) {
                                                     proposalId={proposalId}
                                                     userName={methods.getValues('nomeCompleto')}
                                                     formType={formType}
+                                                    initialWhatsappVerified={whatsappVerified}
                                                 />
                                             </div>
                                         ) : (

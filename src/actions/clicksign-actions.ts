@@ -53,6 +53,12 @@ type PlugsignRequest = {
     sign_url?: string;
 };
 
+type PlugsignFolder = {
+    id?: number | string;
+    folder?: string;
+    accessibility?: string;
+};
+
 function getPlugsignToken() {
     const token = process.env.PLUGSIGN_API_TOKEN || process.env.PLUGSIGN_TOKEN;
 
@@ -87,7 +93,10 @@ async function plugsignFetch(endpoint: string, options: RequestInit = {}) {
 
     if (!response.ok) {
         const message = typeof responseBody === "object" && responseBody
-            ? (responseBody as any).message || (responseBody as any).error || JSON.stringify(responseBody)
+            ? [
+                (responseBody as any).message || (responseBody as any).error || `Erro ${response.status}`,
+                (responseBody as any).errors ? JSON.stringify((responseBody as any).errors) : null
+            ].filter(Boolean).join(" - ")
             : `Erro ${response.status}`;
         throw new Error(message);
     }
@@ -297,6 +306,25 @@ async function renderProposalDocx(proposal: any, templateId?: ProposalTemplateId
     }) as Buffer;
 }
 
+async function listPlugsignFolders(): Promise<PlugsignFolder[]> {
+    const folders: PlugsignFolder[] = [];
+
+    for (let page = 1; page <= 20; page++) {
+        const foldersRes = await plugsignFetch(`/api/folders?page=${page}`, {
+            method: "GET"
+        });
+
+        if (Array.isArray(foldersRes?.data)) {
+            folders.push(...foldersRes.data);
+        }
+
+        const lastPage = Number(foldersRes?.meta?.last_page || page);
+        if (page >= lastPage || !foldersRes?.links?.next) break;
+    }
+
+    return folders;
+}
+
 async function getOrCreateCampaignFolder(campaignId: string, campaignName: string): Promise<number | null> {
     try {
         const db = getAdminDb();
@@ -308,14 +336,31 @@ async function getOrCreateCampaignFolder(campaignId: string, campaignName: strin
             : null;
 
         if (existingFolderId) {
-            return Number(existingFolderId);
+            const numericFolderId = Number(existingFolderId);
+            if (Number.isFinite(numericFolderId) && numericFolderId > 0) {
+                return numericFolderId;
+            }
+        }
+
+        const folders = await listPlugsignFolders();
+        const existingFolder = folders.find((folder) => {
+            return String(folder.folder || "").trim() === campaignName.trim();
+        });
+        const existingPlugsignFolderId = Number(existingFolder?.id);
+
+        if (Number.isFinite(existingPlugsignFolderId) && existingPlugsignFolderId > 0) {
+            await campaignRef.set({
+                plugsignFolderId: existingPlugsignFolderId,
+                clicksignFolderId: String(existingPlugsignFolderId)
+            }, { merge: true });
+            return existingPlugsignFolderId;
         }
 
         const folderRes = await plugsignFetch("/api/folders", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                name: campaignName,
+                folder: campaignName,
                 accessibility: "Everyone"
             })
         });
@@ -323,10 +368,10 @@ async function getOrCreateCampaignFolder(campaignId: string, campaignName: strin
         const folderId = Number(folderRes?.data?.id);
         if (!folderId) return null;
 
-        await campaignRef.update({
+        await campaignRef.set({
             plugsignFolderId: folderId,
             clicksignFolderId: String(folderId)
-        });
+        }, { merge: true });
 
         return folderId;
     } catch (err) {

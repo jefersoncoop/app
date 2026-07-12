@@ -802,6 +802,7 @@ export default function CooperaFormMaster({ campaign }: { campaign?: any }) {
                                                     proposalId={proposalId}
                                                     userName={methods.getValues('nomeCompleto')}
                                                     formType="coopera"
+                                                    initialWhatsappVerified={whatsappVerified}
                                                 />
                                             </div>
                                         ) : (
