@@ -1107,3 +1107,218 @@ export async function batchResendWhatsappByCampaign(campaignId: string): Promise
 
     return { total: pending.length, sent, skipped: 0, errors, details };
 }
+
+export type WhatsappResendJobStatus = "queued" | "processing" | "completed" | "completed_with_errors" | "failed";
+
+export type WhatsappResendJobProgress = {
+    jobId: string;
+    status: WhatsappResendJobStatus;
+    total: number;
+    processed: number;
+    sent: number;
+    skipped: number;
+    errors: number;
+    message?: string;
+};
+
+export async function createWhatsappResendJobByCampaign(campaignId: string, campaignName?: string): Promise<WhatsappResendJobProgress> {
+    const db = getAdminDb();
+    const existingJobsSnap = await db.collection("whatsappResendJobs")
+        .where("campaignId", "==", campaignId)
+        .get();
+
+    const activeJob = existingJobsSnap.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as any))
+        .filter(job => job.type === "signature_link_resend" && (job.status === "queued" || job.status === "processing"))
+        .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0];
+
+    if (activeJob) {
+        return {
+            jobId: activeJob.id,
+            status: activeJob.status,
+            total: Number(activeJob.total || 0),
+            processed: Number(activeJob.processed || 0),
+            sent: Number(activeJob.sent || 0),
+            skipped: Number(activeJob.skipped || 0),
+            errors: Number(activeJob.errors || 0),
+            message: "Lote em andamento encontrado. Continuando do ponto em que parou."
+        };
+    }
+
+    const snap = await db.collection("proposals")
+        .where("campaignId", "==", campaignId)
+        .where("clicksignEnvelopeId", "!=", null)
+        .get();
+
+    const pendingProposalIds = snap.docs
+        .filter(doc => doc.data().clicksignStatus !== "signed" && doc.data().plugsignStatus !== "signed")
+        .map(doc => doc.id);
+
+    const now = new Date().toISOString();
+    const jobRef = await db.collection("whatsappResendJobs").add({
+        campaignId,
+        campaignName: campaignName || "",
+        type: "signature_link_resend",
+        status: pendingProposalIds.length ? "queued" : "completed",
+        proposalIds: pendingProposalIds,
+        cursor: 0,
+        total: pendingProposalIds.length,
+        processed: 0,
+        sent: 0,
+        skipped: 0,
+        errors: 0,
+        details: [],
+        createdAt: now,
+        updatedAt: now
+    });
+
+    return {
+        jobId: jobRef.id,
+        status: pendingProposalIds.length ? "queued" : "completed",
+        total: pendingProposalIds.length,
+        processed: 0,
+        sent: 0,
+        skipped: 0,
+        errors: 0,
+        message: pendingProposalIds.length
+            ? "Lote criado para reenvio de links de assinatura."
+            : "Nenhuma assinatura pendente encontrada para esta campanha."
+    };
+}
+
+export async function processWhatsappResendJob(jobId: string, batchSize = 8): Promise<WhatsappResendJobProgress> {
+    const db = getAdminDb();
+    const jobRef = db.collection("whatsappResendJobs").doc(jobId);
+    const jobSnap = await jobRef.get();
+
+    if (!jobSnap.exists) {
+        return {
+            jobId,
+            status: "failed",
+            total: 0,
+            processed: 0,
+            sent: 0,
+            skipped: 0,
+            errors: 1,
+            message: "Lote de reenvio não encontrado."
+        };
+    }
+
+    const job = jobSnap.data() || {};
+    if (job.status === "completed" || job.status === "completed_with_errors" || job.status === "failed") {
+        return {
+            jobId,
+            status: job.status,
+            total: Number(job.total || 0),
+            processed: Number(job.processed || 0),
+            sent: Number(job.sent || 0),
+            skipped: Number(job.skipped || 0),
+            errors: Number(job.errors || 0),
+            message: "Lote já finalizado."
+        };
+    }
+
+    const proposalIds = Array.isArray(job.proposalIds) ? job.proposalIds as string[] : [];
+    const cursor = Number(job.cursor || 0);
+    const safeBatchSize = Math.max(1, Math.min(Number(batchSize || 8), 20));
+    const slice = proposalIds.slice(cursor, cursor + safeBatchSize);
+
+    if (!slice.length) {
+        const finalStatus: WhatsappResendJobStatus = Number(job.errors || 0) > 0 ? "completed_with_errors" : "completed";
+        await jobRef.update({
+            status: finalStatus,
+            updatedAt: new Date().toISOString(),
+            completedAt: new Date().toISOString()
+        });
+
+        return {
+            jobId,
+            status: finalStatus,
+            total: Number(job.total || proposalIds.length),
+            processed: Number(job.processed || cursor),
+            sent: Number(job.sent || 0),
+            skipped: Number(job.skipped || 0),
+            errors: Number(job.errors || 0),
+            message: "Lote finalizado."
+        };
+    }
+
+    await jobRef.update({
+        status: "processing",
+        updatedAt: new Date().toISOString(),
+        lastBatchStartedAt: new Date().toISOString()
+    });
+
+    let sent = Number(job.sent || 0);
+    let skipped = Number(job.skipped || 0);
+    let errors = Number(job.errors || 0);
+    const details = Array.isArray(job.details) ? [...job.details] : [];
+
+    for (const proposalId of slice) {
+        const snap = await db.collection("proposals").doc(proposalId).get();
+        if (!snap.exists) {
+            errors++;
+            details.push({ proposalId, success: false, message: "Proposta não encontrada.", processedAt: new Date().toISOString() });
+            continue;
+        }
+
+        const proposal = snap.data() as any;
+        if (proposal.clicksignStatus === "signed" || proposal.plugsignStatus === "signed") {
+            skipped++;
+            details.push({
+                proposalId,
+                cpf: proposal.cpf || "",
+                nomeCompleto: proposal.nomeCompleto || null,
+                success: true,
+                skipped: true,
+                message: "Já assinado - pulado",
+                processedAt: new Date().toISOString()
+            });
+            continue;
+        }
+
+        const res = await resendClicksignWhatsapp(proposalId);
+        if (res.success) sent++;
+        else errors++;
+
+        details.push({
+            proposalId,
+            cpf: proposal.cpf || "",
+            nomeCompleto: proposal.nomeCompleto || null,
+            success: res.success,
+            message: res.message,
+            processedAt: new Date().toISOString()
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 300));
+    }
+
+    const processed = cursor + slice.length;
+    const isDone = processed >= proposalIds.length;
+    const nextStatus: WhatsappResendJobStatus = isDone
+        ? (errors > 0 ? "completed_with_errors" : "completed")
+        : "queued";
+
+    await jobRef.update({
+        status: nextStatus,
+        cursor: processed,
+        processed,
+        sent,
+        skipped,
+        errors,
+        details: details.slice(-500),
+        updatedAt: new Date().toISOString(),
+        ...(isDone && { completedAt: new Date().toISOString() })
+    });
+
+    return {
+        jobId,
+        status: nextStatus,
+        total: proposalIds.length,
+        processed,
+        sent,
+        skipped,
+        errors,
+        message: isDone ? "Lote finalizado." : "Bloco processado."
+    };
+}

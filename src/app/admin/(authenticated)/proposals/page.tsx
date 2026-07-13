@@ -3,7 +3,11 @@
 import { getProposals, searchProposals, getProposalsByCampaign, deleteProposal, getAllProposalsByCampaign, batchImportProposals } from '@/actions/proposal-actions';
 import { getCampaignsWithCounts } from '@/actions/campaign-actions';
 import { batchSyncProposalsWithCRM } from '@/actions/document-actions';
-import { batchResendWhatsappByCampaign } from '@/actions/clicksign-actions';
+import {
+    createWhatsappResendJobByCampaign,
+    processWhatsappResendJob,
+    type WhatsappResendJobProgress
+} from '@/actions/clicksign-actions';
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { Eye, Loader2, RefreshCw, LayoutList, Search, X, ChevronDown, ChevronUp, Trash2, SortAsc, Calendar, LinkIcon, Check, Download, Upload, FileSpreadsheet, MessageCircle, FileSignature, CheckCircle2, Clock3 } from 'lucide-react';
@@ -50,6 +54,7 @@ export default function ProposalsPage() {
     const [markers, setMarkers] = useState<string[]>([]);
     const [isBatchSyncing, setIsBatchSyncing] = useState<string | null>(null);
     const [isBatchResending, setIsBatchResending] = useState<string | null>(null);
+    const [resendJobProgress, setResendJobProgress] = useState<Record<string, WhatsappResendJobProgress>>({});
     const PAGE_SIZE = 50;
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -252,18 +257,27 @@ export default function ProposalsPage() {
     };
 
     const handleBatchResend = async (campaignId: string, campaignName: string) => {
-        if (!confirm(`Isso vai reenviar o WhatsApp de assinatura para todos os signatários PENDENTES da campanha "${campaignName}". Continuar?`)) return;
+        if (!confirm(`Isso vai criar um lote e reenviar o link de assinatura em blocos para os pendentes da campanha "${campaignName}". Continuar?`)) return;
 
         setIsBatchResending(campaignId);
         try {
-            const result = await batchResendWhatsappByCampaign(campaignId);
+            let progress = await createWhatsappResendJobByCampaign(campaignId, campaignName);
+            setResendJobProgress(prev => ({ ...prev, [campaignId]: progress }));
+
+            while (progress.status === 'queued' || progress.status === 'processing') {
+                progress = await processWhatsappResendJob(progress.jobId, 8);
+                setResendJobProgress(prev => ({ ...prev, [campaignId]: progress }));
+            }
+
             alert(
                 `✅ Reenvio concluído para "${campaignName}"\n` +
-                `Enviados: ${result.sent}\n` +
-                `Erros: ${result.errors}\n` +
-                `Total de pendentes: ${result.total}`
+                `Enviados: ${progress.sent}\n` +
+                `Pulados: ${progress.skipped}\n` +
+                `Erros: ${progress.errors}\n` +
+                `Processados: ${progress.processed}/${progress.total}`
             );
         } catch (error) {
+            console.error("Error in handleBatchResend:", error);
             alert('Erro ao reenviar notificações.');
         } finally {
             setIsBatchResending(null);
@@ -548,6 +562,14 @@ export default function ProposalsPage() {
                                                         className="hidden"
                                                     />
                                                 </div>
+                                                {resendJobProgress[camp.id] && (
+                                                    <div className="mt-3 rounded-lg border border-green-100 bg-green-50 px-3 py-2 text-xs font-bold text-green-800">
+                                                        Reenvio WhatsApp: {resendJobProgress[camp.id].processed}/{resendJobProgress[camp.id].total}
+                                                        {' '}| Enviados: {resendJobProgress[camp.id].sent}
+                                                        {' '}| Pulados: {resendJobProgress[camp.id].skipped}
+                                                        {' '}| Erros: {resendJobProgress[camp.id].errors}
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {campLoading ? (
