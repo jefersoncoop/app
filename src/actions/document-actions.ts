@@ -5,6 +5,7 @@ import citiesData from "@/data/ibge-cities.json";
 import sharp from 'sharp';
 import convert from 'heic-convert';
 import { verifyProposalSignature } from "./clicksign-actions";
+import { randomUUID } from "crypto";
 
 function getPathFromUrl(url: string): string | null {
     try {
@@ -164,15 +165,59 @@ export async function deleteProposalDocument(proposalId: string, docId: string, 
  * Internal logic for CRM synchronization
  */
 async function performSyncWithCRM(proposalId: string) {
+    const lockId = randomUUID();
+    let lockAcquired = false;
+    let lockedDocRef: FirebaseFirestore.DocumentReference | null = null;
+
     try {
         const db = getAdminDb();
         const docRef = db.collection("proposals").doc(proposalId);
-        const doc = await docRef.get();
-        if (!doc.exists) return { success: false, message: "Proposta não encontrada." };
+        lockedDocRef = docRef;
 
-        const proposalData = doc.data() || {};
+        const lockResult = await db.runTransaction(async (transaction) => {
+            const doc = await transaction.get(docRef);
+            if (!doc.exists) {
+                return { success: false as const, message: "Proposta não encontrada." };
+            }
+
+            const data = doc.data() || {};
+            if (data.crmSynced === true || data.status === "completed") {
+                return { success: true as const, skip: true as const, message: "Proposta já sincronizada com o CRM.", proposalData: data };
+            }
+
+            const startedAt = data.crmSyncStartedAt ? Date.parse(data.crmSyncStartedAt) : 0;
+            const lockIsFresh = data.crmSyncInProgress === true && startedAt && Date.now() - startedAt < 15 * 60 * 1000;
+            if (lockIsFresh) {
+                return { success: true as const, skip: true as const, message: "Sincronização com CRM já está em andamento.", proposalData: data };
+            }
+
+            transaction.update(docRef, {
+                status: "crm_syncing",
+                crmSyncInProgress: true,
+                crmSyncStartedAt: new Date().toISOString(),
+                crmSyncLockId: lockId,
+                crmSyncError: null
+            });
+
+            return { success: true as const, skip: false as const, proposalData: data };
+        });
+
+        if (!lockResult.success) return lockResult;
+        if (lockResult.skip) return { success: true, message: lockResult.message };
+
+        lockAcquired = true;
+        const proposalData = lockResult.proposalData || {};
         const docsSnapshot = await docRef.collection("documents").get();
         const documents = docsSnapshot.docs.map(d => ({ ...d.data(), id: d.id } as any));
+
+        const clearSyncLock = async (message: string) => {
+            await docRef.update({
+                status: "crm_sync_failed",
+                crmSyncInProgress: false,
+                crmSyncFinishedAt: new Date().toISOString(),
+                crmSyncError: message
+            });
+        };
 
         const telefone = proposalData.telefone || "";
         const phoneDigits = telefone.replace(/\D/g, '');
@@ -360,9 +405,11 @@ async function performSyncWithCRM(proposalId: string) {
         // Safety check to avoid CRM failure (30MB limit)
         if (totalMB > 29) {
             console.error(`CRITICAL: Payload too large for CRM (${totalMB.toFixed(2)} MB)`);
+            const message = `Os arquivos combinados são muito grandes (${totalMB.toFixed(2)} MB). O limite é 30MB. Por favor, tente reduzir o tamanho dos PDFs.`;
+            await clearSyncLock(message);
             return {
                 success: false,
-                message: `Os arquivos combinados são muito grandes (${totalMB.toFixed(2)} MB). O limite é 30MB. Por favor, tente reduzir o tamanho dos PDFs.`
+                message
             };
         }
 
@@ -389,7 +436,10 @@ async function performSyncWithCRM(proposalId: string) {
                 status: "completed",
                 crmSynced: false, // Explicitly false as it was skipped
                 crmSyncedAt: null,
-                completedAt: new Date().toISOString()
+                completedAt: new Date().toISOString(),
+                crmSyncInProgress: false,
+                crmSyncFinishedAt: new Date().toISOString(),
+                crmSyncError: null
             });
             return { success: true, message: "Envio concluído (Sincronização manual selecionada)" };
         }
@@ -415,18 +465,35 @@ async function performSyncWithCRM(proposalId: string) {
                 // ignore if not json
             }
 
-            return { success: false, message: `Erro no CRM (${crmResponse.status}): ${txt}` };
+            const message = `Erro no CRM (${crmResponse.status}): ${txt}`;
+            await clearSyncLock(message);
+            return { success: false, message };
         } else {
             // SUCCESS: Mark as synchronized and completed in Firestore
             await docRef.update({
                 status: "completed",
                 crmSynced: true,
-                crmSyncedAt: new Date().toISOString()
+                crmSyncedAt: new Date().toISOString(),
+                completedAt: new Date().toISOString(),
+                crmSyncInProgress: false,
+                crmSyncFinishedAt: new Date().toISOString(),
+                crmSyncError: null
             });
             return { success: true, message: "Sincronizado com sucesso" };
         }
     } catch (error) {
         console.error("CRM Sync Failed:", error);
+        if (lockAcquired && lockedDocRef) {
+            try {
+                await lockedDocRef.update({
+                    crmSyncInProgress: false,
+                    crmSyncFinishedAt: new Date().toISOString(),
+                    crmSyncError: error instanceof Error ? error.message : "Erro desconhecido"
+                });
+            } catch (unlockError) {
+                console.error("Failed to clear CRM sync lock:", unlockError);
+            }
+        }
         return { success: false, message: error instanceof Error ? error.message : "Erro desconhecido" };
     }
 }
@@ -491,6 +558,10 @@ export async function finalizeUploads(proposalId: string) {
         const nomeCompleto = proposalData.nomeCompleto || "Nome não informado";
         const telefone = proposalData.telefone || "";
 
+        if (proposalData.crmSynced === true || proposalData.status === "completed") {
+            return { success: true, message: "Documentos já sincronizados com o CRM." };
+        }
+
         // Fetch Campaign to know the formType
         let formType = 'coopedu';
         if (proposalData.campaignId && proposalData.campaignId !== 'uncategorized') {
@@ -526,9 +597,16 @@ export async function finalizeUploads(proposalId: string) {
             }
         }
 
+        const crmSyncStartedAt = proposalData.crmSyncStartedAt ? Date.parse(proposalData.crmSyncStartedAt) : 0;
+        const crmSyncLockIsFresh = proposalData.crmSyncInProgress === true && crmSyncStartedAt && Date.now() - crmSyncStartedAt < 15 * 60 * 1000;
+        if (crmSyncLockIsFresh) {
+            return { success: true, message: "Documentos recebidos. Sincronização com CRM já está em andamento." };
+        }
+
+        const finalStatus = (formType === 'coopedu' || isCooperaForm) ? "signed" : "documents_received";
         await docRef.update({
-            status: "documents_received",
-            documentsSubmittedAt: new Date().toISOString(),
+            status: finalStatus,
+            documentsSubmittedAt: proposalData.documentsSubmittedAt || new Date().toISOString(),
         });
 
         const phoneDigits = telefone.replace(/\D/g, '');
@@ -547,9 +625,6 @@ export async function finalizeUploads(proposalId: string) {
             });
         }).catch(e => console.error("Notification trigger error:", e));
         */
-
-        // Handle CRM Sync
-        performSyncWithCRM(proposalId).catch(e => console.error("Async CRM sync error:", e));
 
         return { success: true };
     } catch (e) {

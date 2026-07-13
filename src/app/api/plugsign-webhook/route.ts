@@ -138,16 +138,13 @@ export async function POST(req: NextRequest) {
 
         if (currentStatus !== "signed") {
             const update: FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData> = {
+                status: proposal.status === "completed" ? "completed" : "signed",
                 clicksignStatus: "signed",
                 plugsignStatus: "signed",
                 clicksignSignedAt: signedAt,
                 plugsignSignedAt: signedAt,
                 documentsSubmittedAt: proposal.documentsSubmittedAt || signedAt
             };
-
-            if (proposal.status === "pending_documents") {
-                update.status = "documents_received";
-            }
 
             await found.doc.ref.update(update);
             console.log(`[Webhook Plugsign] Marked proposal ${found.doc.id} as signed (${found.field}=${found.value})`);

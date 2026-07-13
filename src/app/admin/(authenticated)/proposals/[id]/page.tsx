@@ -22,6 +22,20 @@ function formatBytes(bytes?: number) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+const PROPOSAL_STATUS_META: Record<string, { label: string; className: string }> = {
+    pending_documents: { label: 'Pendente Docs', className: 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' },
+    documents_received: { label: 'Documentos Recebidos', className: 'bg-blue-500/20 text-blue-400 border border-blue-500/30' },
+    signature_requested: { label: 'Aguardando Assinatura', className: 'bg-purple-500/20 text-purple-300 border border-purple-500/30' },
+    signed: { label: 'Assinado', className: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' },
+    crm_syncing: { label: 'Sincronizando CRM', className: 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' },
+    crm_sync_failed: { label: 'Erro CRM', className: 'bg-red-500/20 text-red-300 border border-red-500/30' },
+    completed: { label: 'Concluída', className: 'bg-green-500/20 text-green-400 border border-green-500/30' },
+};
+
+function getProposalStatusMeta(status?: string) {
+    return PROPOSAL_STATUS_META[status || ''] || { label: status || 'Pendente', className: 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' };
+}
+
 export default function ProposalDetailPage() {
     const { id } = useParams();
     const router = useRouter();
@@ -253,12 +267,8 @@ export default function ProposalDetailPage() {
                         <p className="text-gray-400 text-sm">Ficha enviada em: {new Date(proposal.createdAt).toLocaleString('pt-BR')}</p>
                     </div>
                     <div className="flex flex-col items-end gap-3">
-                        <div className={`px-4 py-2 rounded-xl text-sm font-black uppercase ${proposal.status === 'completed' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-                            proposal.status === 'documents_received' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-                                'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                            }`}>
-                            {proposal.status === 'completed' ? 'Concluída' :
-                                proposal.status === 'documents_received' ? 'Documentos Recebidos' : 'Pendente'}
+                        <div className={`px-4 py-2 rounded-xl text-sm font-black uppercase ${getProposalStatusMeta(proposal.status).className}`}>
+                            {getProposalStatusMeta(proposal.status).label}
                         </div>
                         <div className="flex flex-col md:flex-row gap-3">
                             <label className="min-w-[240px]">

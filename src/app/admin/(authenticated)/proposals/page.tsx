@@ -19,6 +19,20 @@ const CSV_TEMPLATE_HEADERS = [
     "tamanhoCamisa", "criterioLocalidade", "criterioExperiencia", "criterioDisponibilidade", "clicksignStatus"
 ];
 
+const PROPOSAL_STATUS_META: Record<string, { label: string; className: string }> = {
+    pending_documents: { label: 'Aguardando Docs', className: 'bg-yellow-100 text-yellow-800' },
+    documents_received: { label: 'Docs Recebidos', className: 'bg-blue-100 text-blue-800' },
+    signature_requested: { label: 'Aguardando Assinatura', className: 'bg-purple-100 text-purple-800' },
+    signed: { label: 'Assinado', className: 'bg-emerald-100 text-emerald-800' },
+    crm_syncing: { label: 'Sincronizando CRM', className: 'bg-indigo-100 text-indigo-800' },
+    crm_sync_failed: { label: 'Erro CRM', className: 'bg-red-100 text-red-800' },
+    completed: { label: 'Concluído', className: 'bg-green-100 text-green-800' },
+};
+
+function getProposalStatusMeta(status?: string) {
+    return PROPOSAL_STATUS_META[status || ''] || { label: status || 'Pendente', className: 'bg-gray-100 text-gray-800' };
+}
+
 export default function ProposalsPage() {
     const [campaigns, setCampaigns] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -477,6 +491,10 @@ export default function ProposalsPage() {
                                                             <option value="all">TODOS OS STATUS</option>
                                                             <option value="pending_documents">PENDENTE DOCS</option>
                                                             <option value="documents_received">DOCS RECEBIDOS</option>
+                                                            <option value="signature_requested">AGUARDANDO ASSINATURA</option>
+                                                            <option value="signed">ASSINADO</option>
+                                                            <option value="crm_syncing">SINCRONIZANDO CRM</option>
+                                                            <option value="crm_sync_failed">ERRO CRM</option>
                                                             <option value="completed">CONCLUÍDA (CRM)</option>
                                                         </select>
                                                     </div>
@@ -681,15 +699,8 @@ function ProposalsTable({ proposals, onDelete }: { proposals: any[], onDelete: (
                             <td className="p-4 font-bold text-[#002B49] text-sm">{p.nomeCompleto}</td>
                             <td className="p-4 text-gray-600 font-mono text-xs">{p.cpf}</td>
                             <td className="p-4">
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${p.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                    p.status === 'pending_documents' ? 'bg-yellow-100 text-yellow-800' :
-                                        p.status === 'documents_received' ? 'bg-blue-100 text-blue-800' :
-                                            'bg-gray-100 text-gray-800'
-                                    }`}>
-                                    {p.status === 'completed' ? 'Concluído' :
-                                        p.status === 'pending_documents' ? 'Aguardando Docs' :
-                                            p.status === 'documents_received' ? 'Docs Recebidos' :
-                                                p.status}
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${getProposalStatusMeta(p.status).className}`}>
+                                    {getProposalStatusMeta(p.status).label}
                                 </span>
                             </td>
                             <td className="p-4">

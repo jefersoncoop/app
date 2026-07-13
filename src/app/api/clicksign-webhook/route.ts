@@ -154,14 +154,11 @@ export async function POST(req: NextRequest) {
 
         if (currentClicksignStatus !== 'signed') {
             const signedUpdate: FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData> = {
+                status: proposal.status === 'completed' ? 'completed' : 'signed',
                 clicksignStatus: 'signed',
                 clicksignSignedAt: signedAt,
                 documentsSubmittedAt: proposal.documentsSubmittedAt || signedAt
             };
-
-            if (proposal.status === 'pending_documents') {
-                signedUpdate.status = 'documents_received';
-            }
 
             await doc.ref.update(signedUpdate);
 

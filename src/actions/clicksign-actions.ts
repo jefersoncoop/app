@@ -413,16 +413,13 @@ async function markSignedIfNeeded(proposalId: string, request: PlugsignRequest) 
 
     const signedAt = request.update_time || new Date().toISOString();
     const update: FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData> = {
+        status: proposal.status === "completed" ? "completed" : "signed",
         clicksignStatus: "signed",
         plugsignStatus: "signed",
         clicksignSignedAt: signedAt,
         plugsignSignedAt: signedAt,
         documentsSubmittedAt: proposal.documentsSubmittedAt || signedAt
     };
-
-    if (proposal.status === "pending_documents") {
-        update.status = "documents_received";
-    }
 
     await docRef.update(update);
     return true;
@@ -477,6 +474,12 @@ export async function getOrCreateProposalSignature(
                             plugsignSigningUrl: existingSigningUrl,
                             plugsignWhatsappSentAt: whatsappResult.success ? new Date().toISOString() : null,
                             plugsignWhatsappError: whatsappResult.success ? null : whatsappResult.message
+                        });
+                    }
+
+                    if (normalizedStatus !== "signed" && !["completed", "crm_syncing", "signed"].includes(String(proposal.status || ""))) {
+                        await docRef.update({
+                            status: "signature_requested"
                         });
                     }
 
@@ -577,6 +580,7 @@ export async function getOrCreateProposalSignature(
             : { success: false, message: "Plugsign não retornou o link de assinatura no modo silencioso." };
 
         await docRef.update({
+            status: "signature_requested",
             proposalTemplateId: selectedTemplate.id,
             proposalTemplateLabel: selectedTemplate.label,
             plugsignFolderId: campaignFolder?.folderId || null,
