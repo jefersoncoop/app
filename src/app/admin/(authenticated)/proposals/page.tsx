@@ -37,6 +37,21 @@ function getProposalStatusMeta(status?: string) {
     return PROPOSAL_STATUS_META[status || ''] || { label: status || 'Pendente', className: 'bg-gray-100 text-gray-800' };
 }
 
+function getConvocationConfirmationStatus(status?: string) {
+    switch (status) {
+        case 'confirmed':
+            return 'Confirmado';
+        case 'sent':
+            return 'Aguardando confirmação';
+        case 'sending':
+            return 'Enviando';
+        case 'send_failed':
+            return 'Falha no envio';
+        default:
+            return 'Não convocado';
+    }
+}
+
 export default function ProposalsPage() {
     const [campaigns, setCampaigns] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -182,7 +197,7 @@ export default function ProposalsPage() {
 
             // Define columns
             const headers = [
-                "Data", "Nome Completo", "CPF", "Status", "Telefone", "Email",
+                "Data", "Nome Completo", "CPF", "Status", "Status Confirmação Convocação", "Telefone", "Email",
                 "Cargo/Categoria", "Escola Selecionada", "Cidade", "Estado", "CEP", "Logradouro", "Numero", "Bairro", "tamanhoCamisa", "Link", "Status Plugsign"
             ];
 
@@ -192,6 +207,7 @@ export default function ProposalsPage() {
                 p.nomeCompleto,
                 p.cpf,
                 p.status,
+                getConvocationConfirmationStatus(p.latestConvocation?.status),
                 p.telefone,
                 p.email,
                 p.cargo || p.categoriaFuncao,
