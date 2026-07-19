@@ -16,6 +16,33 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Convocação via WhatsApp
+
+O disparo de convocações usa as seguintes variáveis de ambiente:
+
+```bash
+# URL pública usada para montar /convocacao/{token}
+NEXT_PUBLIC_APP_URL=https://seu-dominio.com.br
+
+# Endpoint que receberá o payload JSON do WhatsApp
+CONVOCATION_WHATSAPP_ENDPOINT=https://seu-servico.com/api/convocacao
+
+# Opcional: enviado como Authorization: Bearer {token}
+CONVOCATION_WHATSAPP_TOKEN=
+```
+
+Payload enviado ao endpoint:
+
+```json
+{
+  "nome": "Nome do candidato",
+  "numero": "5584999999999",
+  "cargo": "Cargo informado",
+  "local": "Local de comparecimento",
+  "link": "https://seu-dominio.com.br/convocacao/{token}"
+}
+```
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

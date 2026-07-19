@@ -12,6 +12,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ChevronLeft, FileText, Download, User, Phone, MapPin, Briefcase, Send, CheckCircle2, AlertCircle, Loader2, Bell, RotateCw, LinkIcon, Check, Trash2, AlertTriangle, PenLine, MessageCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { ConvocationPanel } from '@/components/convocations/convocation-panel';
 
 function formatBytes(bytes?: number) {
     if (!bytes) return 'Indisponível';
@@ -368,6 +369,12 @@ export default function ProposalDetailPage() {
                 <InfoField label="Escola Selecionada" value={proposal.escolaSelecionada} />
                 <InfoField label="Renda Mensal" value={proposal.rendaMensal ? `R$ ${proposal.rendaMensal}` : null} />
             </Section>
+
+            <ConvocationPanel
+                proposalId={proposal.id}
+                defaultJobTitle={proposal.cargo || proposal.categoriaFuncao}
+                latestConvocation={proposal.latestConvocation}
+            />
 
             {/* Plugsign Signature Section */}
             {proposal.clicksignEnvelopeId && (
