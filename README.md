@@ -43,6 +43,57 @@ Payload enviado ao endpoint:
 }
 ```
 
+## API externa de consulta de propostas
+
+Configure no servidor uma chave exclusiva para a integração (o nome legado
+`XAPIKEY` também é aceito por compatibilidade):
+
+```bash
+PROPOSAL_API_KEY=gere-uma-chave-longa-e-aleatoria
+```
+
+O sistema de atendimento pode consultar uma proposta por `GET`:
+
+```bash
+curl 'https://seu-dominio.com.br/api/external/proposals?cpf=123.456.789-09' \
+  -H 'Authorization: Bearer gere-uma-chave-longa-e-aleatoria'
+```
+
+Ou por `POST` (também é aceito o cabeçalho `x-api-key`):
+
+```bash
+curl -X POST 'https://seu-dominio.com.br/api/external/proposals' \
+  -H 'Content-Type: application/json' \
+  -H 'x-api-key: gere-uma-chave-longa-e-aleatoria' \
+  -d '{"cpf":"12345678909"}'
+```
+
+Resposta de sucesso (`200`):
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "id-da-proposta",
+    "nomeCompleto": "Nome do associado",
+    "cpf": "123.456.789-09",
+    "status": "signature_requested",
+    "assinatura": {
+      "status": "pendente",
+      "assinado": false,
+      "link": "https://link-de-assinatura.example",
+      "assinadoEm": null,
+      "statusProvedor": "pending"
+    }
+  }
+}
+```
+
+A rota retorna `400` para CPF inválido, `401` para chave ausente/incorreta,
+`404` quando não existe proposta e `503` quando a chave não foi configurada.
+As respostas usam `Cache-Control: no-store` e não incluem tokens de upload,
+chaves internas da assinatura ou histórico de verificação.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
