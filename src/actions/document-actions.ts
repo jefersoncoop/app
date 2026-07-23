@@ -164,7 +164,7 @@ export async function deleteProposalDocument(proposalId: string, docId: string, 
 /**
  * Internal logic for CRM synchronization
  */
-async function performSyncWithCRM(proposalId: string) {
+async function performSyncWithCRM(proposalId: string, forceSync = false) {
     const lockId = randomUUID();
     let lockAcquired = false;
     let lockedDocRef: FirebaseFirestore.DocumentReference | null = null;
@@ -181,7 +181,10 @@ async function performSyncWithCRM(proposalId: string) {
             }
 
             const data = doc.data() || {};
-            if (data.crmSynced === true || data.status === "completed") {
+            // Automatic flows must remain idempotent. An explicit manual sync,
+            // however, is also the recovery path for records incorrectly marked
+            // as synced even though they never reached the CRM.
+            if (!forceSync && (data.crmSynced === true || data.status === "completed")) {
                 return { success: true as const, skip: true as const, message: "Proposta já sincronizada com o CRM.", proposalData: data };
             }
 
@@ -248,7 +251,8 @@ async function performSyncWithCRM(proposalId: string) {
         formData.append("Email", proposalData.email || "nao_coletado@gmail.com");
         formData.append("Telephone", phoneDigits);
         formData.append("CellPhone", phoneDigits);
-        formData.append("Gender", mapGender(proposalData.sexo || ""));
+        const gender = mapGender(proposalData.sexo || "");
+        if (gender) formData.append("Gender", gender);
         formData.append("MaritalStatus", mapMaritalStatus(proposalData.estadoCivil || ""));
         formData.append("RaceColor", proposalData.corRaca || "Branca");
         formData.append("Nationality", "BRASILEIRO");
@@ -275,7 +279,8 @@ async function performSyncWithCRM(proposalId: string) {
         formData.append("Address.CodMunic", codMunic);
         formData.append("Address.Neighborhood", proposalData.bairro || "nao coletado");
         formData.append("Address.StreetName", proposalData.logradouroNome || "nao coletado");
-        formData.append("Address.HouseNumber", proposalData.numero || "S/N");
+        const houseNumber = String(proposalData.numero || "S/N").trim();
+        formData.append("Address.HouseNumber", /^sem\s*n[uú]mero$/i.test(houseNumber) ? "S/N" : houseNumber.slice(0, 10));
         formData.append("Address.TpLograd", proposalData.logradouroTipo || "Rua");
         formData.append("Address.Complement", proposalData.complemento || "nao coletado");
 
@@ -319,17 +324,24 @@ async function performSyncWithCRM(proposalId: string) {
             "curriculo": "Files.CurriculoVitaeLink",
             "diploma": "Files.DiplomaDeGraduacaoLink"
         };
+        const skippedFileTypes: string[] = [];
 
         for (const doc of documents) {
             const crmField = fileMapping[doc.type as string];
             if (crmField && doc.url) {
                 let blob = await downloadFileAsBlob(doc.url);
                 if (blob) {
-                    const docType = (doc.type as string).toLowerCase();
-                    const isHeic = (doc.filename?.toLowerCase().endsWith('.heic') || doc.filename?.toLowerCase().endsWith('.heif')) || blob.type === 'image/heic';
+                    const detectedType = await detectCrmFileType(blob);
+                    if (!detectedType) {
+                        console.warn(`Skipping unsupported CRM attachment type: ${doc.type} (${blob.type || 'unknown MIME'})`);
+                        skippedFileTypes.push(String(doc.type));
+                        continue;
+                    }
+
+                    const isHeic = detectedType === 'heic';
 
                     // Convert images (including HEIC) to JPG
-                    if (blob.type.startsWith('image/') || isHeic) {
+                    if (detectedType !== 'pdf') {
                         try {
                             let buffer = Buffer.from(await blob.arrayBuffer());
 
@@ -360,20 +372,24 @@ async function performSyncWithCRM(proposalId: string) {
                             blob = new Blob([new Uint8Array(compressedBuffer)], { type: 'image/jpeg' });
                         } catch (sharpError) {
                             console.error(`Error processing image ${doc.type}:`, sharpError);
-                            // Fallback to original blob if sharp fails
+                            skippedFileTypes.push(String(doc.type));
+                            continue;
                         }
+                    } else if (blob.type !== 'application/pdf') {
+                        blob = new Blob([new Uint8Array(await blob.arrayBuffer())], { type: 'application/pdf' });
                     }
 
-                    let extension = blob.type.split('/')[1] || 'pdf';
-                    if (extension === 'jpeg') extension = 'jpg';
-
-                    let filename = doc.filename || `document_${doc.type}.${extension}`;
-                    // Force .jpg extension for all images for CRM compatibility
-                    if (blob.type === 'image/jpeg' || filename.toLowerCase().endsWith('.heic') || filename.toLowerCase().endsWith('.jpeg')) {
-                        const baseName = filename.split('.').slice(0, -1).join('.');
-                        filename = `${baseName || 'document'}.jpg`;
+                    if (blob.size > 10 * 1024 * 1024) {
+                        console.warn(`Skipping CRM attachment larger than 10MB: ${doc.type}`);
+                        skippedFileTypes.push(String(doc.type));
+                        continue;
                     }
 
+                    // The CRM validates the extension from the multipart filename.
+                    // Stored legacy names are often missing or contain text after the
+                    // extension, so always send a deterministic valid name.
+                    const extension = detectedType === 'pdf' ? 'pdf' : 'jpg';
+                    const filename = `document_${sanitizeFilenamePart(String(doc.type))}.${extension}`;
                     formData.append(crmField, blob, filename);
                 }
             }
@@ -382,7 +398,7 @@ async function performSyncWithCRM(proposalId: string) {
         const requiredFileFields = ["Files.DocIdentidadeCpfLink", "Files.ComprovanteDeResidenciaLink"];
         for (const field of requiredFileFields) {
             if (!formData.has(field)) {
-                formData.append(field, new Blob([]), "vazio_obrigatorio.pdf");
+                formData.append(field, new Blob([], { type: 'application/pdf' }), "vazio_obrigatorio.pdf");
             }
         }
 
@@ -413,9 +429,10 @@ async function performSyncWithCRM(proposalId: string) {
             };
         }
 
-        // Check if sync is enabled for this campaign
+        // Automatic sync obeys the campaign setting. Explicit actions from the
+        // admin UI use forceSync so a campaign in manual mode can still be sent.
         let syncEnabled = true;
-        if (proposalData.campaignId && proposalData.campaignId !== 'uncategorized') {
+        if (!forceSync && proposalData.campaignId && proposalData.campaignId !== 'uncategorized') {
             try {
                 const campDoc = await db.collection("campaigns").doc(proposalData.campaignId).get();
                 if (campDoc.exists) {
@@ -477,9 +494,17 @@ async function performSyncWithCRM(proposalId: string) {
                 completedAt: new Date().toISOString(),
                 crmSyncInProgress: false,
                 crmSyncFinishedAt: new Date().toISOString(),
-                crmSyncError: null
+                crmSyncError: null,
+                crmSyncWarnings: skippedFileTypes.length > 0
+                    ? [`Anexos ignorados por formato ou tamanho incompatível: ${Array.from(new Set(skippedFileTypes)).join(', ')}`]
+                    : []
             });
-            return { success: true, message: "Sincronizado com sucesso" };
+            return {
+                success: true,
+                message: skippedFileTypes.length > 0
+                    ? `Sincronizado com sucesso. Alguns anexos incompatíveis foram ignorados: ${Array.from(new Set(skippedFileTypes)).join(', ')}.`
+                    : "Sincronizado com sucesso"
+            };
         }
     } catch (error) {
         console.error("CRM Sync Failed:", error);
@@ -498,8 +523,8 @@ async function performSyncWithCRM(proposalId: string) {
     }
 }
 
-export async function syncProposalWithCRM(proposalId: string) {
-    return await performSyncWithCRM(proposalId);
+export async function syncProposalWithCRM(proposalId: string, forceSync = false) {
+    return await performSyncWithCRM(proposalId, forceSync);
 }
 
 export async function batchSyncProposalsWithCRM(campaignId: string) {
@@ -517,15 +542,16 @@ export async function batchSyncProposalsWithCRM(campaignId: string) {
 
         for (const doc of snapshot.docs) {
             const data = doc.data();
-            // Skip already synced unless forced (we keep it simple for now: skip completed)
-            if (data.status === "completed" || data.crmSynced) {
+            // Only retry completed proposals that were explicitly marked as
+            // not synced. Older records may not have the crmSynced field.
+            if (data.crmSynced === true || (data.status === "completed" && data.crmSynced !== false)) {
                 continue;
             }
 
             // Small delay to avoid hitting CRM rate limits too hard if any
             await new Promise(resolve => setTimeout(resolve, 500));
 
-            const res = await performSyncWithCRM(doc.id);
+            const res = await performSyncWithCRM(doc.id, true);
             if (res.success) {
                 successCount++;
             } else {
@@ -686,6 +712,36 @@ async function downloadFileAsBlob(url: string): Promise<Blob | null> {
     }
 }
 
+type CrmFileType = 'pdf' | 'jpeg' | 'png' | 'webp' | 'heic';
+
+async function detectCrmFileType(blob: Blob): Promise<CrmFileType | null> {
+    const mime = blob.type.toLowerCase();
+    if (mime === 'application/pdf') return 'pdf';
+    if (mime === 'image/jpeg' || mime === 'image/jpg') return 'jpeg';
+    if (mime === 'image/png') return 'png';
+    if (mime === 'image/webp') return 'webp';
+    if (mime === 'image/heic' || mime === 'image/heif') return 'heic';
+
+    // Firebase metadata from older uploads may have an empty/generic MIME type.
+    const bytes = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+    const ascii = String.fromCharCode(...bytes);
+    if (ascii.startsWith('%PDF-')) return 'pdf';
+    if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'jpeg';
+    if (bytes[0] === 0x89 && ascii.slice(1, 4) === 'PNG') return 'png';
+    if (ascii.slice(0, 4) === 'RIFF' && ascii.slice(8, 12) === 'WEBP') return 'webp';
+    if (ascii.slice(4, 8) === 'ftyp' && /hei[cxf]|mif1/.test(ascii.slice(8, 16))) return 'heic';
+    return null;
+}
+
+function sanitizeFilenamePart(value: string): string {
+    return value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9_-]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'arquivo';
+}
+
 async function notifyFinalExternalService(payload: { nome: string, numero: string }) {
     try {
         const response = await fetch("https://webatende.coopedu.com.br:3000/api/external/fimroadmap", {
@@ -703,11 +759,13 @@ async function notifyFinalExternalService(payload: { nome: string, numero: strin
     }
 }
 
-function mapGender(val: string): string {
+function mapGender(val: string): string | null {
     const v = val.toUpperCase();
     if (v.includes("MASC")) return "MASCULINO";
     if (v.includes("FEMI")) return "FEMININO";
-    return "OUTRO";
+    // The CRM currently rejects "OUTRO". Omitting the optional field is safer
+    // than sending a value outside its enum.
+    return null;
 }
 
 function mapMaritalStatus(val: string): string {

@@ -100,7 +100,7 @@ export default function ProposalDetailPage() {
         setIsSyncing(true);
         setSyncResult(null);
         try {
-            const result = await syncProposalWithCRM(id as string);
+            const result = await syncProposalWithCRM(id as string, true);
             setSyncResult(result);
             if (result.success) {
                 // Refresh data if status changed or just to be safe
@@ -319,7 +319,7 @@ export default function ProposalDetailPage() {
                         {syncResult.success ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
                         <div>
                             <p className="font-bold">{syncResult.success ? 'Sucesso!' : 'Ocorreu um erro'}</p>
-                            <p className="text-sm opacity-80">{syncResult.success ? 'A proposta foi enviada com sucesso para o CRM.' : syncResult.message}</p>
+                            <p className="text-sm opacity-80">{syncResult.message}</p>
                         </div>
                     </div>
                 )}

@@ -162,6 +162,26 @@ export default function UploadManager({ proposalId, userName, formType = 'cooped
     };
 
     const handleBeforeUpload = async (file: File, hash: string): Promise<boolean> => {
+        const supportedTypes = new Set([
+            'application/pdf',
+            'image/jpeg',
+            'image/png',
+            'image/webp',
+            'image/heic',
+            'image/heif'
+        ]);
+        const isSupportedType = supportedTypes.has(file.type.toLowerCase());
+        if (!isSupportedType) {
+            alert('Formato não permitido. Envie somente PDF ou imagem.');
+            return false;
+        }
+
+        const MAX_FILE_SIZE = 10 * 1024 * 1024;
+        if (file.size > MAX_FILE_SIZE) {
+            alert(`Este arquivo possui ${(file.size / 1024 / 1024).toFixed(2)}MB. O limite por arquivo aceito pelo CRM é 10MB.`);
+            return false;
+        }
+
         // 1. Check for duplicates in other slots
         const duplicateEntry = Object.entries(uploadedDocsDetails).find(([type, doc]) => doc.hash === hash);
         if (duplicateEntry) {
